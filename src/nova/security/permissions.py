@@ -26,43 +26,12 @@ class PermissionDecision(str, Enum):
     DENY = "DENY"
 
 
+from nova.security.paths import is_confined
+
+
 def check_workspace_containment(target_path: Path | str, workspace_root: Path | str) -> bool:
-    """Verifies that target_path resides safely within workspace_root.
-
-    Implements robust path normalization and Windows case-insensitive containment.
-
-    Args:
-        target_path: Path to inspect.
-        workspace_root: Base confinement directory.
-
-    Returns:
-        True if target_path is inside or equal to workspace_root, False otherwise.
-    """
-    try:
-        raw_target = str(target_path)
-        # Strip URL prefixes if present
-        if raw_target.startswith("file:///"):
-            raw_target = raw_target[8:]
-        elif raw_target.startswith("file://"):
-            raw_target = raw_target[7:]
-
-        resolved_target = Path(raw_target).resolve()
-        resolved_root = Path(workspace_root).resolve()
-
-        if sys.platform == "win32":
-            # Windows file system paths are case-insensitive
-            target_str = os.path.normcase(str(resolved_target))
-            root_str = os.path.normcase(str(resolved_root))
-            return target_str == root_str or target_str.startswith(root_str + os.sep)
-        else:
-            try:
-                resolved_target.relative_to(resolved_root)
-                return True
-            except ValueError:
-                return False
-    except Exception:
-        # If path resolution fails for any reason, fail closed
-        return False
+    """Verifies that target_path resides safely within workspace_root."""
+    return is_confined(target_path, workspace_root)
 
 
 class PermissionEngine:

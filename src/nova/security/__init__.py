@@ -5,6 +5,11 @@ from nova.security.approvals import (
     AutomatedApprovalHandler,
     ConsoleApprovalHandler,
 )
+from nova.security.paths import (
+    canonicalize_path,
+    is_confined,
+    resolve_and_confine,
+)
 from nova.security.permissions import (
     PermissionDecision,
     PermissionEngine,
@@ -20,6 +25,9 @@ __all__ = [
     "PermissionDecision",
     "PermissionEngine",
     "check_workspace_containment",
+    "canonicalize_path",
+    "is_confined",
+    "resolve_and_confine",
     "RiskEvaluator",
     "build_antigravity_policies",
 ]
