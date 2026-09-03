@@ -4,6 +4,7 @@ import asyncio
 import importlib.metadata
 import platform
 import sys
+from pathlib import Path
 from typing import Annotated
 
 from rich.console import Console
@@ -157,6 +158,127 @@ def query_command(
         sys.exit(1)
     except Exception as e:
         console.print(Panel(f"[bold red]Unexpected Error:[/bold red]\n{e}", title="Error", border_style="red"))
+        sys.exit(1)
+
+
+@app.command(name="plan")
+def plan_command(
+    prompt: Annotated[str, typer.Argument(help="Goal or project structure request to plan")],
+) -> None:
+    """Constructs a structured multi-step plan without performing any filesystem mutations (dry-run)."""
+    from nova.planning.planner import TaskPlanner
+
+    settings = get_settings()
+    planner = TaskPlanner(workspace_root=settings.workspace_root)
+
+    try:
+        plan = planner.create_plan_for_goal(prompt)
+
+        table = Table(title=f"NOVA Proposed Plan: {plan.goal}", show_header=True, header_style="bold cyan")
+        table.add_column("Step", style="bold", width=6)
+        table.add_column("Description", style="white")
+        table.add_column("Tool", style="yellow")
+        table.add_column("Target", style="cyan")
+        table.add_column("Deps", style="magenta")
+        table.add_column("Risk", style="red")
+
+        for step in plan.steps:
+            deps_str = ", ".join(str(d) for d in step.dependencies) if step.dependencies else "-"
+            table.add_row(
+                str(step.step_id),
+                step.description,
+                step.tool,
+                Path(step.target).name or step.target,
+                deps_str,
+                step.risk_level.value,
+            )
+
+        console.print(table)
+        summary = (
+            f"[bold]Plan ID:[/bold] {plan.plan_id}\n"
+            f"[bold]Plan Hash:[/bold] {plan.plan_hash}\n"
+            f"[bold]Total Operations:[/bold] {len(plan.steps)} planned\n"
+            f"[bold]Risk Ceiling:[/bold] {plan.risk_ceiling.value}\n\n"
+            "[bold yellow]DRY-RUN MODE: Zero filesystem modifications made.[/bold yellow]\n"
+            f"To execute this plan with transactional safety, run:\n"
+            f"  [green]nova execute \"{prompt}\"[/green]"
+        )
+        console.print(Panel(summary, title="[bold green]Plan Summary[/bold green]", border_style="cyan"))
+
+    except Exception as e:
+        console.print(Panel(f"[bold red]Planning Error:[/bold red]\n{e}", title="Error", border_style="red"))
+        sys.exit(1)
+
+
+@app.command(name="execute")
+def execute_command(
+    prompt: Annotated[str, typer.Argument(help="Goal or project structure request to plan and execute")],
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Automatically approve the plan without prompting")] = False,
+) -> None:
+    """Plans, prompts for confirmation, and executes mutations inside a verified atomic transaction."""
+    from nova.planning.executor import PlanExecutor
+    from nova.planning.planner import TaskPlanner
+
+    settings = get_settings()
+    planner = TaskPlanner(workspace_root=settings.workspace_root)
+    executor = PlanExecutor()
+
+    try:
+        # 1. Synthesize Plan
+        plan = planner.create_plan_for_goal(prompt)
+
+        table = Table(title=f"Proposed Plan: {plan.goal}", show_header=True, header_style="bold cyan")
+        table.add_column("Step", style="bold", width=6)
+        table.add_column("Description", style="white")
+        table.add_column("Tool", style="yellow")
+        table.add_column("Target", style="cyan")
+        table.add_column("Risk", style="red")
+
+        for step in plan.steps:
+            table.add_row(
+                str(step.step_id),
+                step.description,
+                step.tool,
+                Path(step.target).name or step.target,
+                step.risk_level.value,
+            )
+
+        console.print(table)
+        console.print(f"[bold]Plan Hash:[/bold] {plan.plan_hash}")
+        console.print(f"[bold]Workspace:[/bold] {settings.workspace_root}")
+        console.print(f"[bold]Total Changes:[/bold] {len(plan.steps)} operations proposed (Risk: {plan.risk_ceiling.value})")
+
+        # 2. Approval Gate
+        if not yes:
+            approved = typer.confirm("Authorize this transaction?", default=False)
+            if not approved:
+                console.print("[yellow]Execution cancelled by user. Zero changes made.[/yellow]")
+                sys.exit(0)
+
+        # 3. Transactional Execution & Verification
+        console.print("\n[bold cyan]Starting Transactional Execution...[/bold cyan]")
+        result = executor.execute(plan, approved_hash=plan.plan_hash)
+
+        if result.success:
+            success_msg = (
+                f"[bold green][OK] Transaction Committed Successfully![/bold green]\n\n"
+                f"Goal: {plan.goal}\n"
+                f"Completed: {result.completed_steps}/{result.total_steps} operations verified.\n"
+                f"Transaction ID: {result.transaction_id}\n"
+                f"Status: {result.status.value}"
+            )
+            console.print(Panel(success_msg, title="[bold green]NOVA Transaction Result[/bold green]", border_style="green"))
+        else:
+            fail_msg = (
+                f"[bold red][FAILED] Execution Failed at Step {result.completed_steps + 1}[/bold red]\n"
+                f"Error: {result.error}\n\n"
+                f"Rollback Status: {'Cleanly Restored (LIFO verified)' if result.rollback_verified else 'ROLLBACK FAILED'}"
+            )
+            console.print(Panel(fail_msg, title="[bold red]Transaction Rolled Back[/bold red]", border_style="red"))
+            sys.exit(1)
+
+    except Exception as e:
+        console.print(Panel(f"[bold red]Execution Failure:[/bold red]\n{e}", title="Error", border_style="red"))
         sys.exit(1)
 
 
