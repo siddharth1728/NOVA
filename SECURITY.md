@@ -20,10 +20,14 @@ NOVA addresses five primary threat categories:
 
 ## 2. Least Privilege Architecture
 
-### Initial Read-Only Posture (Phase 01)
-In Phase 01, NOVA's runtime exposes **only** safe, read-only tools:
-- Allowed: `list_directory`, `search_directory`, `find_file`, `view_file`, `read_url_content`, `finish`.
-- Restricted / Blocked: `create_file`, `edit_file`, `run_command`, `invoke_subagent`.
+### Controlled Mutation Posture (Phase 02)
+In Phase 02, NOVA introduces safe, reversible filesystem operations:
+- **Allowed with Approval**: `create_directory`, `create_file`, `edit_file`, `rename_file`, `move_file`, `copy_file` (classified as `MEDIUM` risk, requiring user confirmation in `STANDARD` mode).
+- **Strictly Blocked**: Arbitrary shell execution (`run_command`), OS service alterations, and system configuration modifications remain denied by default.
+- **Canonical Confinement**: `resolve_and_confine` enforces absolute containment within `workspace_root`, normalizing Windows drive letters and case insensitivity while rejecting directory traversal.
+- **Stale-State Protection**: Edits verify SHA-256 pre-hashes against disk state. If external modifications occurred, `FILE_CHANGED_SINCE_PLAN` is raised to prevent silent overwrites.
+- **Plan Drift Guard**: Executed steps must cryptographically match the approved plan hash. In-flight modifications raise `PlanDriftError`.
+- **LIFO Rollback**: Multi-step transactions execute atomically with automated snapshot backups under `.nova/backups/`. Mid-plan failures automatically roll back completed operations in reverse order.
 
 ### 5-Tier Risk Classification
 1. **`READ_ONLY`**: Zero state mutation, pure inspection.
@@ -36,14 +40,9 @@ In Phase 01, NOVA's runtime exposes **only** safe, read-only tools:
 
 ## 3. Human-in-the-Loop Approvals
 
-When higher-risk tools are enabled in future phases:
-- The `ApprovalHandler` interface provides structured inspection before execution:
-  - Tool name
-  - Evaluated risk tier
-  - Exact argument dictionary
-  - Reason approval is required
-- Interactive CLI confirmation requires explicit human authorization (`[y/N]`).
-- Any unapproved or timed-out request fails closed (`Decision.DENY`).
+- Interactive CLI confirmation requires explicit human authorization (`[y/N]`) before any mutation transaction begins.
+- The approval prompt transparently details the goal, number of operations, target paths, and risk tier.
+- Any unapproved or cancelled request fails closed, making zero filesystem modifications.
 
 ---
 
@@ -52,6 +51,7 @@ When higher-risk tools are enabled in future phases:
 1. **No Hardcoded Secrets**: All API tokens and credentials must be supplied via environment variables or `.env`.
 2. **Safe Representations**: Credentials in memory are encapsulated via `pydantic.SecretStr` to prevent accidental string casting.
 3. **Audit Scrubbing**: The audit trail enforces automated regex scrubbing for Google API keys (`AIzaSy...`), Bearer tokens, and sensitive key names.
+
 
 ---
 

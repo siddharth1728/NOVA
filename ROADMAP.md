@@ -4,7 +4,7 @@ NOVA is evolving systematically through disciplined phases. Each phase expands c
 
 ---
 
-## Phase 01: Foundational Architecture & Bootstrap (CURRENT)
+## Phase 01: Foundational Architecture & Bootstrap (COMPLETED)
 - [x] Environment and Antigravity SDK binding (`google-antigravity` v0.1.16).
 - [x] Typed configuration system with Pydantic and secret masking.
 - [x] Tool Registry with 5-tier risk taxonomy (`READ_ONLY`, `LOW`, `MEDIUM`, `HIGH`, `CRITICAL`).
@@ -14,20 +14,24 @@ NOVA is evolving systematically through disciplined phases. Each phase expands c
 - [x] Structured observability and append-only JSONL audit trail with secret scrubbing.
 - [x] Session lifecycle state machine and epistemic verification loop.
 - [x] Functional CLI (`nova info`, `nova check`, `nova query`).
-- [x] Unit and integration test suite (41 tests).
+- [x] Unit and integration test suite (42 tests).
 
 ---
 
-## Phase 02: Controlled Workspace Mutations & Multi-Step Planning
-- [ ] Safe file authoring and editing within workspace (`create_file`, `edit_file`).
-- [ ] Structured multi-step task planner with milestone breakdown.
-- [ ] Interactive human approval gate in CLI for medium-risk mutations.
-- [ ] Rollback engine: automatic backup and undo for file modifications.
-- [ ] SQLite memory backend option for high-throughput execution history.
+## Phase 02: Controlled Workspace Mutations & Multi-Step Planning (COMPLETED)
+- [x] Six controlled mutation tools (`create_directory`, `create_file`, `edit_file`, `rename_file`, `move_file`, `copy_file`).
+- [x] Robust canonical path confinement with Windows case-insensitivity and traversal blocking.
+- [x] Transaction & LIFO Rollback Manager with automated snapshot backups under `.nova/backups/`.
+- [x] Concurrency and stale-file conflict detection (`FILE_CHANGED_SINCE_PLAN`).
+- [x] Multi-step task planner with topological dependency sorting.
+- [x] Cryptographic plan hashing (SHA-256) and runtime plan drift prevention (`PlanDriftError`).
+- [x] Empirical verification engine asserting direct filesystem state.
+- [x] CLI commands: `nova plan` (pure dry-run) and `nova execute` (transactional apply with approval).
+- [x] Comprehensive test suite (74 tests passing, 0 failing).
 
 ---
 
-## Phase 03: Specialized Subagent Activation & Delegation
+## Phase 03: Specialized Subagent Activation & Delegation (NEXT)
 - [ ] Activation of static subagents via Antigravity `SubagentConfig`.
 - [ ] Planner Subagent: Autonomous goal decomposition.
 - [ ] Researcher Subagent: Document synthesis and web research.

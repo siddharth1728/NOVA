@@ -104,9 +104,29 @@ Custom tools are registered via `@nova_tool` decorator with automated schema inf
   - `[VERIFIED]`: Proven outcomes matching post-conditions.
 - **Post-Action Verification**: `verify_outcome()` validates that claims regarding files or state mutations are backed by empirical tool events.
 
+### 2.7 Transaction & Rollback Subsystem (`nova.transactions`)
+- **Atomic Operations**: All file mutations write through temporary files with atomic `os.replace` semantics.
+- **LIFO Rollback**: If an operation fails mid-transaction, previously completed mutations are reverted in strict reverse order (Last-In-First-Out).
+- **Snapshot Backups**: Pre-mutation file contents are preserved under `.nova/backups/<tx_id>/`.
+- **Precondition & Stale-State Protection**: Validates SHA-256 pre-hashes before applying edits; conflicting concurrent changes raise `FILE_CHANGED_SINCE_PLAN`.
+- **Integrity Alarm**: If rollback itself fails, `RollbackFailedError` is raised with `ROLLBACK_FAILED` state to ensure no silent corruption.
+
+### 2.8 Multi-Step Planning & Plan Integrity (`nova.planning`)
+- **Dependency-Ordered Plans**: `TaskPlanner` synthesizes discrete, dependency-ordered plans (`PlanStep`) with topological cycle detection.
+- **Deterministic Plan Hashing**: SHA-256 digest of canonical plan contents binds human approval directly to the execution envelope.
+- **Plan Drift Guard**: `PlanExecutor` re-verifies the plan hash prior to execution; any parameter drift raises `PlanDriftError` and halts execution.
+
+### 2.9 Empirical Verification Engine (`nova.verification`)
+- **Direct Filesystem Invariants**: Validates actual disk state rather than tool return codes:
+  - Verifies presence of created files and directories.
+  - Verifies absence of sources following moves and renames.
+  - Verifies content hashes against expected postconditions.
+  - Validates clean restoration of pre-transaction state during rollback.
+
 ---
 
 ## 3. Skills and Subagent Extensibility
 
-- **Skills**: Fully aligned with the Antigravity skill layout (`<skill_dir>/SKILL.md`). In Phase 01, `workspace-explorer` provides a reference implementation.
-- **Subagents**: Defined by `SubagentBlueprint` specifications (Planner, Researcher, Coder, Browser Operator, Computer Operator, Verifier, Security Reviewer, Document Specialist). Blueprints map directly to native `SubagentConfig` for multi-agent activation in subsequent phases.
+- **Skills**: Fully aligned with the Antigravity skill layout (`<skill_dir>/SKILL.md`). `workspace-explorer` provides a reference implementation.
+- **Subagents**: Defined by `SubagentBlueprint` specifications (Planner, Researcher, Coder, Browser Operator, Computer Operator, Verifier, Security Reviewer, Document Specialist). Blueprints map directly to native `SubagentConfig`.
+

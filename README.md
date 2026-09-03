@@ -7,22 +7,20 @@ NOVA is a local-first personal AI operating layer designed to safely understand 
 
 ---
 
-## Current Status (v0.1.0)
+## Current Status (v0.2.0)
 
-Phase 01 establishes the production architecture and safety invariants. In this phase, **NOVA operates in strict, read-only mode** to guarantee that capabilities are deterministic, observable, testable, and secure by default.
+Phase 02 elevates NOVA into a **controlled workspace operator**, enabling safe, reversible, multi-step mutations within the configured workspace.
 
-### Implemented in Phase 01:
-- **Typed Configuration & Secret Masking**: Robust settings powered by Pydantic Settings and `.env`, with automated secret scrubbing.
-- **Tool Registry with 5-Tier Risk Model**: Formally categorizes all tools into `READ_ONLY`, `LOW`, `MEDIUM`, `HIGH`, and `CRITICAL`.
-- **Least-Privilege Security Engine**: Restricts execution to read-only capabilities and strictly confines operations within the configured `workspace_root`.
-- **Native Antigravity Policy Bridge**: Translates product policies into native `google.antigravity.hooks.policy.Policy` rules (`workspace_only`, `deny("run_command")`).
-- **Local-First Memory Store**: Atomic, private local JSON persistence for user preferences, environment facts, task states, execution history, learned workflows, and project context.
-- **Structured Observability & Audit Trail**: Append-only JSONL audit logging (`.nova/audit/audit.jsonl`) with automated secret redaction for API keys, tokens, and credentials.
-- **Agent Lifecycle State Machine**: Enforces valid state transitions (`INITIALIZING` -> `READY` -> `PLANNING` -> `EXECUTING` -> `VERIFYING` -> `IDLE`).
-- **Epistemic Discipline & Verification**: Enforces separation of `[OBSERVED]`, `[INFERRED]`, `[ASSUMED]`, and `[VERIFIED]` facts.
-- **Antigravity SDK Runtime**: Encapsulates `google.antigravity.Agent` and `LocalAgentConfig` (v0.1.16).
-- **Interactive & Diagnostic CLI**: Commands `nova info`, `nova check`, and `nova query "<prompt>"`.
-- **Comprehensive Test Suite**: 41 unit and integration tests covering all subsystems.
+### Core Capabilities:
+- **Six Workspace Mutation Tools**: `create_directory`, `create_file`, `edit_file`, `rename_file`, `move_file`, `copy_file`.
+- **Atomic File Operations**: Automatic sibling temp file creation and `os.replace` replacement on Windows NTFS and POSIX.
+- **Transaction & LIFO Rollback Manager**: Atomic groups of operations with automated snapshot backups under `.nova/backups/`. Reverses operations in strict LIFO order upon failure.
+- **Stale-State Protection**: Detects conflicting modifications made since planning (`FILE_CHANGED_SINCE_PLAN`).
+- **Multi-Step Task Planning**: Dependency-ordered milestone decomposition with Kahn's algorithm cycle detection.
+- **Cryptographic Plan Integrity**: Deterministic SHA-256 plan hashing preventing runtime argument or tool drift (`PlanDriftError`).
+- **Empirical Verification**: Direct filesystem checks on disk (existence, absence after move/rename, SHA-256 hash preservation).
+- **Interactive CLI Experience**: `nova plan` for pure dry-run inspection and `nova execute` for transactional apply with user confirmation.
+- **Automated Test Suite**: 74 unit and integration tests passing with 100% success.
 
 ---
 
@@ -47,7 +45,7 @@ Phase 01 establishes the production architecture and safety invariants. In this 
    ```
 
 3. **Configure Environment**:
-   Copy `.env.example` to `.env` and configure your API key (optional for local simulation):
+   Copy `.env.example` to `.env`:
    ```powershell
    Copy-Item .env.example .env
    ```
@@ -56,25 +54,26 @@ Phase 01 establishes the production architecture and safety invariants. In this 
 
 ## CLI Usage
 
-### System Information
-Inspect runtime properties, version bindings, and security profiles:
+### System Information & Diagnostics
 ```powershell
 .venv\Scripts\nova info
-```
-
-### Subsystem Diagnostics
-Run health checks across configuration, permissions, tools, audit, and memory:
-```powershell
 .venv\Scripts\nova check
 ```
 
-### Workspace Query
-Execute verified read-only workspace inspection:
+### Multi-Step Planning (Dry-Run Mode)
+Inspect workspace and generate a structured plan without making any modifications:
 ```powershell
-# Live Agent Inference (Requires GEMINI_API_KEY)
-.venv\Scripts\nova query "List the important files in the current workspace"
+.venv\Scripts\nova plan "Create a Python project structure called demo-service with src/ and README.md"
+```
 
-# Local Verified Simulation (Offline, no external API key required)
+### Transactional Plan Execution
+Review plan, authorize with confirmation gate, execute mutations, and verify empirically:
+```powershell
+.venv\Scripts\nova execute "Create a Python project structure called demo-service with src/ and README.md"
+```
+
+### Verified Read-Only Query
+```powershell
 .venv\Scripts\nova query "List the important files in the current workspace" --simulate
 ```
 
