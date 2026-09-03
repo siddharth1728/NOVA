@@ -33,6 +33,7 @@ class AuditTrail:
         )
 
         with self._lock:
+            self.log_file.parent.mkdir(parents=True, exist_ok=True)
             with open(self.log_file, "a", encoding="utf-8") as f:
                 f.write(safe_record.model_dump_json() + "\n")
 
@@ -50,18 +51,15 @@ class AuditTrail:
         session_id: str = "standalone",
         task_id: str = "standalone",
     ) -> AuditRecord:
-        """Convenience method to construct and record an audit entry."""
-        clean_inputs = str(redact_sensitive_data(inputs))[:500]
-        clean_results = str(redact_sensitive_data(results))[:500] if results is not None else ""
-
+        """Convenience method to construct and record an audit entry for a tool call."""
         record = AuditRecord(
-            task_id=task_id,
             session_id=session_id,
+            task_id=task_id,
             tool=tool,
             risk_level=risk_level,
             approval_state=approval_state,
-            input_summary=clean_inputs,
-            result_summary=clean_results,
+            input_summary=str(inputs),
+            result_summary=str(results),
             success=success,
             duration_ms=duration_ms,
             error=error,
@@ -93,8 +91,9 @@ _default_audit_trail: AuditTrail | None = None
 
 
 def get_audit_trail() -> AuditTrail:
-    """Provides application-wide AuditTrail singleton."""
+    """Provides application-wide AuditTrail singleton tracking active configuration."""
     global _default_audit_trail
-    if _default_audit_trail is None:
-        _default_audit_trail = AuditTrail()
+    current_dir = get_settings().audit_dir.resolve()
+    if _default_audit_trail is None or _default_audit_trail.audit_dir != current_dir:
+        _default_audit_trail = AuditTrail(audit_dir=current_dir)
     return _default_audit_trail
