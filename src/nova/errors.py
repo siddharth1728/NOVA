@@ -104,3 +104,84 @@ class VerificationError(NovaError):
 
 class ExternalServiceError(NovaError):
     """Raised when an external API or service connection fails."""
+
+
+class ConflictError(NovaError):
+    """Raised when a concurrency, collision, or stale-state conflict is detected."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        conflict_type: str,
+        target_path: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        merged = {"conflict_type": conflict_type}
+        if target_path:
+            merged["target_path"] = target_path
+        if details:
+            merged.update(details)
+        super().__init__(message, details=merged)
+        self.conflict_type = conflict_type
+        self.target_path = target_path
+
+
+class RollbackFailedError(NovaError):
+    """Raised when a transactional rollback encounters an unrecoverable failure.
+
+    This represents a critical system integrity event.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        transaction_id: str,
+        failed_operation: str,
+        recovery_info: dict[str, Any] | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        merged = {
+            "transaction_id": transaction_id,
+            "failed_operation": failed_operation,
+        }
+        if recovery_info:
+            merged["recovery_info"] = recovery_info
+        if details:
+            merged.update(details)
+        super().__init__(message, details=merged)
+        self.transaction_id = transaction_id
+        self.failed_operation = failed_operation
+        self.recovery_info = recovery_info or {}
+
+
+class PlanDriftError(NovaError):
+    """Raised when an operation attempts to execute outside the bounds of the approved plan."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        plan_id: str,
+        expected_hash: str,
+        observed_hash: str | None = None,
+        drift_reason: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        merged = {
+            "plan_id": plan_id,
+            "expected_hash": expected_hash,
+        }
+        if observed_hash:
+            merged["observed_hash"] = observed_hash
+        if drift_reason:
+            merged["drift_reason"] = drift_reason
+        if details:
+            merged.update(details)
+        super().__init__(message, details=merged)
+        self.plan_id = plan_id
+        self.expected_hash = expected_hash
+        self.observed_hash = observed_hash
+        self.drift_reason = drift_reason
+
