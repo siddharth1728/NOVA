@@ -510,6 +510,84 @@ WEB_APP_HTML = r"""<!DOCTYPE html>
       background: var(--bg-card-hover);
     }
 
+    /* Computer Controls Sub-panels */
+    .ctrl-pill-bar {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      margin-top: 12px;
+      margin-bottom: 12px;
+      padding-bottom: 2px;
+    }
+    .ctrl-pill {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .ctrl-pill.active {
+      background: var(--cyan-glow);
+      color: #000;
+      border-color: var(--cyan-glow);
+    }
+    .touchpad-box {
+      width: 100%;
+      height: 150px;
+      background: rgba(15, 20, 28, 0.8);
+      border: 1px solid var(--border-accent);
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      font-size: 11px;
+      touch-action: none;
+      user-select: none;
+      position: relative;
+      text-align: center;
+      padding: 10px;
+    }
+    .ctrl-btn-row {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .ctrl-key-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .ctrl-key-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-main);
+      padding: 8px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      text-align: center;
+      cursor: pointer;
+    }
+    .ctrl-key-btn:active {
+      background: var(--cyan-dim);
+      border-color: var(--cyan-glow);
+    }
+    .comp-item-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border-subtle);
+      font-size: 11px;
+    }
+
     /* Activity Log Tab */
     .activity-list {
       display: flex;
@@ -835,7 +913,7 @@ WEB_APP_HTML = r"""<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- Tab 3: Computer (Screen Viewer) -->
+    <!-- Tab 3: Computer (Full Remote Control) -->
     <div id="tab-computer" class="tab-content">
       <div class="card">
         <div class="card-title">
@@ -851,9 +929,73 @@ WEB_APP_HTML = r"""<!DOCTYPE html>
             <span>🔄</span> Capture Desktop Now
           </button>
           <label style="font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
-            <input type="checkbox" id="chkAutoRefresh" onchange="toggleAutoRefresh(this.checked)"> Auto-refresh (3s)
+            <input type="checkbox" id="chkAutoRefresh" onchange="toggleAutoRefresh(this.checked)"> Auto (3s)
           </label>
         </div>
+
+        <!-- Control Mode Pills -->
+        <div class="ctrl-pill-bar">
+          <button class="ctrl-pill active" id="pill-touchpad" onclick="switchCompSubTab('touchpad')">Touchpad</button>
+          <button class="ctrl-pill" id="pill-keyboard" onclick="switchCompSubTab('keyboard')">Keyboard</button>
+          <button class="ctrl-pill" id="pill-windows" onclick="switchCompSubTab('windows')">Windows</button>
+          <button class="ctrl-pill" id="pill-apps" onclick="switchCompSubTab('apps')">Apps</button>
+        </div>
+
+        <!-- Subtab 1: Touchpad -->
+        <div id="comp-touchpad" class="comp-subpanel">
+          <div class="touchpad-box" id="touchpadSurface">
+            <span>🖱️ Drag on trackpad to move mouse • Tap to left click</span>
+          </div>
+          <div class="ctrl-btn-row">
+            <button class="btn-screen-refresh" style="justify-content:center;" onclick="remoteClick('left')">Left Click</button>
+            <button class="btn-screen-refresh" style="justify-content:center; color:#8B5CF6;" onclick="remoteClick('right')">Right Click</button>
+          </div>
+          <div class="ctrl-btn-row" style="margin-top:6px;">
+            <button class="btn-screen-refresh" style="justify-content:center; font-size:11px;" onclick="remoteScroll(120)">▲ Scroll Up</button>
+            <button class="btn-screen-refresh" style="justify-content:center; font-size:11px;" onclick="remoteScroll(-120)">▼ Scroll Down</button>
+          </div>
+        </div>
+
+        <!-- Subtab 2: Keyboard -->
+        <div id="comp-keyboard" class="comp-subpanel" style="display:none;">
+          <div style="display:flex; gap:6px;">
+            <input type="text" id="compKeyInput" class="agent-input" style="flex:1;" placeholder="Type text to send...">
+            <button class="btn-screen-refresh" onclick="sendCompType()">Send</button>
+          </div>
+          <div class="ctrl-key-grid">
+            <button class="ctrl-key-btn" onclick="remoteKeyPress('Enter')">Enter</button>
+            <button class="ctrl-key-btn" onclick="remoteKeyPress('Escape')">Esc</button>
+            <button class="ctrl-key-btn" onclick="remoteKeyPress('Tab')">Tab</button>
+            <button class="ctrl-key-btn" onclick="remoteKeyPress('Backspace')">⌫ Back</button>
+            <button class="ctrl-key-btn" onclick="remoteKeyCombo(['ctrl', 'c'])">Ctrl+C</button>
+            <button class="ctrl-key-btn" onclick="remoteKeyCombo(['ctrl', 'v'])">Ctrl+V</button>
+            <button class="ctrl-key-btn" onclick="remoteKeyCombo(['ctrl', 'z'])">Ctrl+Z</button>
+            <button class="ctrl-key-btn" onclick="remoteKeyCombo(['alt', 'tab'])">Alt+Tab</button>
+          </div>
+        </div>
+
+        <!-- Subtab 3: Windows -->
+        <div id="comp-windows" class="comp-subpanel" style="display:none;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <span style="font-size:11px; color:var(--text-muted);" id="winListHeader">Active Windows</span>
+            <button class="btn-screen-refresh" style="padding:4px 8px; font-size:10px;" onclick="loadWindowsList()">Refresh</button>
+          </div>
+          <div id="winListContainer" style="max-height:200px; overflow-y:auto;">
+            <div style="color:var(--text-muted); font-size:11px;">Loading windows...</div>
+          </div>
+        </div>
+
+        <!-- Subtab 4: Apps -->
+        <div id="comp-apps" class="comp-subpanel" style="display:none;">
+          <div style="display:flex; gap:6px; margin-bottom:6px;">
+            <input type="text" id="appSearchInput" class="agent-input" style="flex:1;" placeholder="Filter apps..." oninput="filterAppsList()">
+            <button class="btn-screen-refresh" style="padding:4px 8px; font-size:10px;" onclick="loadAppsList()">Refresh</button>
+          </div>
+          <div id="appsListContainer" style="max-height:200px; overflow-y:auto;">
+            <div style="color:var(--text-muted); font-size:11px;">Loading apps...</div>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -988,7 +1130,9 @@ WEB_APP_HTML = r"""<!DOCTYPE html>
 
       if (tabName === "computer" && authToken) {
         fetchScreenshot();
+        initTouchpad();
       }
+
     }
 
     // Formatting Helpers
@@ -1267,6 +1411,241 @@ WEB_APP_HTML = r"""<!DOCTYPE html>
         autoRefreshTimer = setInterval(fetchScreenshot, 3000);
       }
     }
+
+    // Sub-tab switching for Computer Tab
+    function switchCompSubTab(sub) {
+      const pills = ['touchpad', 'keyboard', 'windows', 'apps'];
+      pills.forEach(p => {
+        const pillEl = document.getElementById('pill-' + p);
+        const panelEl = document.getElementById('comp-' + p);
+        if (pillEl) pillEl.className = (p === sub) ? 'ctrl-pill active' : 'ctrl-pill';
+        if (panelEl) panelEl.style.display = (p === sub) ? 'block' : 'none';
+      });
+      if (sub === 'windows') loadWindowsList();
+      if (sub === 'apps') loadAppsList();
+    }
+
+    // Touchpad and Mouse
+    let lastTouchX = null, lastTouchY = null;
+    function initTouchpad() {
+      const touchpadEl = document.getElementById('touchpadSurface');
+      if (touchpadEl && !touchpadEl._init) {
+        touchpadEl._init = true;
+        touchpadEl.addEventListener('touchstart', (e) => {
+          if (e.touches.length === 1) {
+            lastTouchX = e.touches[0].clientX;
+            lastTouchY = e.touches[0].clientY;
+          }
+        }, { passive: true });
+        touchpadEl.addEventListener('touchmove', (e) => {
+          if (e.touches.length === 1 && lastTouchX !== null) {
+            const dx = Math.round((e.touches[0].clientX - lastTouchX) * 1.5);
+            const dy = Math.round((e.touches[0].clientY - lastTouchY) * 1.5);
+            lastTouchX = e.touches[0].clientX;
+            lastTouchY = e.touches[0].clientY;
+            if (Math.abs(dx) > 0 || Math.abs(dy) > 0) {
+              sendMouseMove(dx, dy);
+            }
+          }
+        }, { passive: true });
+        touchpadEl.addEventListener('touchend', () => {
+          lastTouchX = null;
+          lastTouchY = null;
+        }, { passive: true });
+      }
+    }
+
+    async function sendMouseMove(dx, dy) {
+      if (!authToken) return;
+      try {
+        await fetch("/api/v1/computer/mouse/move", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": "Bearer " + authToken },
+          body: JSON.stringify({ x: dx, y: dy })
+        });
+      } catch (e) {}
+    }
+
+    async function remoteClick(btn) {
+      if (!authToken) { showToast("Pairing required"); return; }
+      try {
+        await fetch("/api/v1/computer/mouse/click", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": "Bearer " + authToken },
+          body: JSON.stringify({ button: btn, count: 1 })
+        });
+        showToast(btn === 'left' ? "Left Click" : "Right Click");
+      } catch (e) {
+        showToast("Click failed");
+      }
+    }
+
+    async function remoteScroll(clicks) {
+      if (!authToken) return;
+      try {
+        await fetch("/api/v1/computer/mouse/scroll", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": "Bearer " + authToken },
+          body: JSON.stringify({ clicks: clicks })
+        });
+        showToast(clicks > 0 ? "Scrolled Up" : "Scrolled Down");
+      } catch (e) {}
+    }
+
+    // Keyboard
+    async function sendCompType() {
+      const inp = document.getElementById('compKeyInput');
+      const text = inp.value;
+      if (!text || !authToken) return;
+      inp.value = "";
+      try {
+        await fetch("/api/v1/computer/keyboard/type", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": "Bearer " + authToken },
+          body: JSON.stringify({ text: text })
+        });
+        showToast("Sent text");
+      } catch (e) {
+        showToast("Type failed");
+      }
+    }
+
+    async function remoteKeyPress(key) {
+      if (!authToken) return;
+      try {
+        await fetch("/api/v1/computer/keyboard/press", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": "Bearer " + authToken },
+          body: JSON.stringify({ key: key })
+        });
+        showToast("Key: " + key);
+      } catch (e) {}
+    }
+
+    async function remoteKeyCombo(keys) {
+      if (!authToken) return;
+      try {
+        await fetch("/api/v1/computer/keyboard/press", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": "Bearer " + authToken },
+          body: JSON.stringify({ keys: keys })
+        });
+        showToast("Combo: " + keys.join("+"));
+      } catch (e) {}
+    }
+
+    // Windows List
+    async function loadWindowsList() {
+      const cont = document.getElementById("winListContainer");
+      if (!authToken) { cont.innerHTML = "<div>Pairing required</div>"; return; }
+      cont.innerHTML = "<div>Loading active windows...</div>";
+      try {
+        const resp = await fetch("/api/v1/computer/windows", {
+          headers: { "Authorization": "Bearer " + authToken }
+        });
+        const wins = await resp.json();
+        if (!wins || wins.length === 0) {
+          cont.innerHTML = "<div style='color:var(--text-muted);'>No visible windows found</div>";
+          return;
+        }
+        cont.innerHTML = wins.map(w => `
+          <div class="comp-item-row">
+            <div style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-right:8px;">
+              <strong>${w.title || w.process_name}</strong>
+              <div style="color:var(--text-muted); font-size:9px;">${w.process_name} • HWND ${w.hwnd}</div>
+            </div>
+            <div style="display:flex; gap:4px;">
+              <button class="btn-screen-refresh" style="padding:4px 8px; font-size:10px;" onclick="remoteFocusWin(${w.hwnd})">Focus</button>
+              <button class="btn-screen-refresh" style="padding:4px 8px; font-size:10px; color:#EF4444;" onclick="remoteCloseWin(${w.hwnd})">✕</button>
+            </div>
+          </div>
+        `).join("");
+      } catch (e) {
+        cont.innerHTML = "<div>Error loading windows</div>";
+      }
+    }
+
+    async function remoteFocusWin(hwnd) {
+      try {
+        await fetch("/api/v1/computer/windows/focus", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": "Bearer " + authToken },
+          body: JSON.stringify({ hwnd: hwnd })
+        });
+        showToast("Focused window");
+        fetchScreenshot();
+      } catch(e) {}
+    }
+
+    async function remoteCloseWin(hwnd) {
+      if (!confirm("Close this window (HWND " + hwnd + ")?")) return;
+      try {
+        await fetch("/api/v1/computer/windows/close", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": "Bearer " + authToken },
+          body: JSON.stringify({ hwnd: hwnd })
+        });
+        showToast("Closed window");
+        loadWindowsList();
+        fetchScreenshot();
+      } catch(e) {}
+    }
+
+    // Apps List
+    let cachedApps = [];
+    async function loadAppsList() {
+      const cont = document.getElementById("appsListContainer");
+      if (!authToken) { cont.innerHTML = "<div>Pairing required</div>"; return; }
+      cont.innerHTML = "<div>Discovering installed apps...</div>";
+      try {
+        const resp = await fetch("/api/v1/computer/apps", {
+          headers: { "Authorization": "Bearer " + authToken }
+        });
+        cachedApps = await resp.json();
+        renderApps(cachedApps);
+      } catch (e) {
+        cont.innerHTML = "<div>Error loading apps</div>";
+      }
+    }
+
+    function filterAppsList() {
+      const q = (document.getElementById("appSearchInput").value || "").toLowerCase();
+      const filtered = cachedApps.filter(a => a.name.toLowerCase().includes(q));
+      renderApps(filtered);
+    }
+
+    function renderApps(apps) {
+      const cont = document.getElementById("appsListContainer");
+      if (!apps || apps.length === 0) {
+        cont.innerHTML = "<div style='color:var(--text-muted);'>No matching applications</div>";
+        return;
+      }
+      cont.innerHTML = apps.slice(0, 15).map(a => `
+        <div class="comp-item-row">
+          <div style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-right:8px;">
+            <strong>${a.name}</strong>
+            <div style="color:var(--text-muted); font-size:9px;">${a.publisher || a.executable_path}</div>
+          </div>
+          <button class="btn-screen-refresh" style="padding:4px 8px; font-size:10px; color:#10B981;" onclick="remoteLaunchApp('${encodeURIComponent(a.executable_path)}')">Launch</button>
+        </div>
+      `).join("");
+    }
+
+    async function remoteLaunchApp(encodedPath) {
+      const path = decodeURIComponent(encodedPath);
+      try {
+        showToast("Launching app...");
+        const resp = await fetch("/api/v1/computer/apps/launch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": "Bearer " + authToken },
+          body: JSON.stringify({ app_name_or_path: path })
+        });
+        const res = await resp.json();
+        showToast(res.success ? "App Launched (PID " + res.pid + ")" : "Launch failed");
+        setTimeout(fetchScreenshot, 1500);
+      } catch(e) {}
+    }
+
 
     // Emergency PC Lock
     async function triggerEmergencyLock() {

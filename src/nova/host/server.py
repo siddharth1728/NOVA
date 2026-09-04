@@ -13,6 +13,16 @@ import uvicorn
 from nova.agent.runtime import NovaRuntime
 from nova.config.settings import NovaSettings, get_settings
 from nova.control.capabilities import CapabilityRegistry
+from nova.control.interfaces import (
+    ApplicationController,
+    ClipboardController,
+    KeyboardController,
+    MouseController,
+    ProcessController,
+    UIAutomationController,
+    WindowController,
+)
+from nova.control.journal import ComputerActionJournal
 from nova.control.power import PowerControlProvider
 from nova.control.screen import ScreenCaptureProvider
 from nova.control.system import SystemMetricsProvider
@@ -38,6 +48,14 @@ def create_host_app(
     screen_capture: ScreenCaptureProvider | None = None,
     power_control: PowerControlProvider | None = None,
     capability_registry: CapabilityRegistry | None = None,
+    window_controller: WindowController | None = None,
+    application_controller: ApplicationController | None = None,
+    mouse_controller: MouseController | None = None,
+    keyboard_controller: KeyboardController | None = None,
+    clipboard_controller: ClipboardController | None = None,
+    process_controller: ProcessController | None = None,
+    ui_automation_controller: UIAutomationController | None = None,
+    computer_journal: ComputerActionJournal | None = None,
     telemetry_interval: float = 3.0,
 ) -> Starlette:
     """Factory creating the production Starlette ASGI app for the Windows Host."""
@@ -71,6 +89,14 @@ def create_host_app(
         screen_capture=screen,
         power_control=power,
         capability_registry=caps,
+        window_controller=window_controller,
+        application_controller=application_controller,
+        mouse_controller=mouse_controller,
+        keyboard_controller=keyboard_controller,
+        clipboard_controller=clipboard_controller,
+        process_controller=process_controller,
+        ui_automation_controller=ui_automation_controller,
+        journal=computer_journal,
     )
 
     # Periodic telemetry background task for connected WebSockets
@@ -122,6 +148,25 @@ def create_host_app(
         Route("/api/v1/emergency/lock", router.handle_emergency_lock, methods=["POST"]),
         Route("/api/v1/devices", router.handle_list_devices, methods=["GET"]),
         Route("/api/v1/devices/{device_id}/revoke", router.handle_revoke_device, methods=["POST"]),
+        # Phase 05: Authoritative Computer Control Endpoints
+        Route("/api/v1/computer/windows", router.handle_list_windows, methods=["GET"]),
+        Route("/api/v1/computer/windows/focus", router.handle_focus_window, methods=["POST"]),
+        Route("/api/v1/computer/windows/close", router.handle_close_window, methods=["POST"]),
+        Route("/api/v1/computer/windows/bounds", router.handle_bounds_window, methods=["POST"]),
+        Route("/api/v1/computer/apps", router.handle_list_apps, methods=["GET"]),
+        Route("/api/v1/computer/apps/launch", router.handle_launch_app, methods=["POST"]),
+        Route("/api/v1/computer/displays", router.handle_list_displays, methods=["GET"]),
+        Route("/api/v1/computer/mouse/click", router.handle_mouse_click, methods=["POST"]),
+        Route("/api/v1/computer/mouse/move", router.handle_mouse_move, methods=["POST"]),
+        Route("/api/v1/computer/mouse/scroll", router.handle_mouse_scroll, methods=["POST"]),
+        Route("/api/v1/computer/keyboard/type", router.handle_keyboard_type, methods=["POST"]),
+        Route("/api/v1/computer/keyboard/press", router.handle_keyboard_press, methods=["POST"]),
+        Route("/api/v1/computer/clipboard", router.handle_get_clipboard, methods=["GET"]),
+        Route("/api/v1/computer/clipboard", router.handle_set_clipboard, methods=["POST"]),
+        Route("/api/v1/computer/processes", router.handle_list_processes, methods=["GET"]),
+        Route("/api/v1/computer/processes/{pid:int}/stop", router.handle_stop_process, methods=["POST"]),
+        Route("/api/v1/computer/uia/action", router.handle_uia_action, methods=["POST"]),
+        Route("/api/v1/computer/journal", router.handle_list_journal, methods=["GET"]),
         WebSocketRoute("/ws/v1/events", router.handle_websocket_events),
     ]
 

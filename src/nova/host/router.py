@@ -17,8 +17,45 @@ from nova.config.settings import NovaSettings
 from nova.control.capabilities import CapabilityRegistry
 from nova.control.power import PowerControlProvider
 from nova.control.screen import ScreenCaptureProvider
+from nova.control.applications.launcher import WindowsApplicationController
+from nova.control.applications.models import LaunchRequest
+from nova.control.automation.models import UIElementTarget
+from nova.control.automation.uia import WindowsUIAutomationController
+from nova.control.clipboard.manager import WindowsClipboardController
+from nova.control.input.keyboard import WindowsKeyboardController
+from nova.control.input.models import Key, KeyCombination, MouseAction, MouseButton
+from nova.control.input.mouse import WindowsMouseController
+from nova.control.interfaces import (
+    ApplicationController,
+    ClipboardController,
+    KeyboardController,
+    MouseController,
+    ProcessController,
+    UIAutomationController,
+    WindowController,
+)
+from nova.control.journal import ComputerActionJournal, ComputerActionRecord, get_computer_journal
+from nova.control.processes.manager import WindowsProcessController
+from nova.control.processes.models import ProcessFilter
 from nova.control.system import SystemMetricsProvider
-from nova.errors import AuthenticationError, DeviceRevokedError, PairingExpiredError
+from nova.control.windows.manager import WindowsWindowController
+from nova.control.windows.models import WindowBounds
+from nova.errors import (
+    AmbiguousTargetError,
+    ApplicationLaunchError,
+    AuthenticationError,
+    ClipboardAccessError,
+    ComputerControlError,
+    ComputerVerificationError,
+    DeviceRevokedError,
+    InputInjectionError,
+    PairingExpiredError,
+    ProcessAccessDeniedError,
+    ProtectedProcessError,
+    TargetNotFoundError,
+    UIAutomationError,
+    WindowNotFoundError,
+)
 from nova.host.auth import DeviceRegistry, TokenManager
 from nova.host.pairing import PairingManager
 from nova.host.tasks import TaskController
@@ -29,10 +66,19 @@ from nova.protocol.models import (
     PROTOCOL_VERSION,
     SERVER_VERSION,
     AgentStatus,
+    AppLaunchRemoteRequest,
+    ClipboardWriteRemoteRequest,
     DeviceInfo,
     EmergencyActionRequest,
     HealthResponse,
+    KeyboardTypeRemoteRequest,
+    KeyComboRemoteRequest,
+    KeyPressRemoteRequest,
+    MouseClickRemoteRequest,
+    MouseMoveRemoteRequest,
+    MouseScrollRemoteRequest,
     PairingRequest,
+    ProcessStopRemoteRequest,
     RemoteQueryRequest,
     RemoteQueryResponse,
     ScreenCaptureRequest,
@@ -40,7 +86,11 @@ from nova.protocol.models import (
     TaskCancelRequest,
     TaskCancelResponse,
     TaskStatus,
+    UIElementActionRemoteRequest,
     WebSocketEvent,
+    WindowBoundsRemoteRequest,
+    WindowCloseRemoteRequest,
+    WindowFocusRemoteRequest,
 )
 from nova.tools.registry import get_tool_registry
 
@@ -64,6 +114,14 @@ class HostRouter:
         screen_capture: ScreenCaptureProvider | None = None,
         power_control: PowerControlProvider | None = None,
         capability_registry: CapabilityRegistry | None = None,
+        window_controller: WindowController | None = None,
+        application_controller: ApplicationController | None = None,
+        mouse_controller: MouseController | None = None,
+        keyboard_controller: KeyboardController | None = None,
+        clipboard_controller: ClipboardController | None = None,
+        process_controller: ProcessController | None = None,
+        ui_automation_controller: UIAutomationController | None = None,
+        journal: ComputerActionJournal | None = None,
     ) -> None:
         self.settings = settings
         self.runtime = runtime
@@ -76,7 +134,16 @@ class HostRouter:
         self.screen_capture = screen_capture or ScreenCaptureProvider()
         self.power_control = power_control or PowerControlProvider()
         self.capability_registry = capability_registry or CapabilityRegistry()
+        self.window_controller = window_controller or WindowsWindowController()
+        self.application_controller = application_controller or WindowsApplicationController()
+        self.mouse_controller = mouse_controller or WindowsMouseController()
+        self.keyboard_controller = keyboard_controller or WindowsKeyboardController()
+        self.clipboard_controller = clipboard_controller or WindowsClipboardController()
+        self.process_controller = process_controller or WindowsProcessController()
+        self.ui_automation_controller = ui_automation_controller or WindowsUIAutomationController()
+        self.journal = journal or get_computer_journal()
         self.host_start_time = time.time()
+
 
     def authenticate_request(self, request: Request) -> DeviceInfo:
         """Extract and validate the Bearer token from the HTTP Authorization header."""
@@ -588,3 +655,504 @@ class HostRouter:
         except Exception as ex:
             logger.info("WebSocket connection closed: %s", ex)
             await self.websocket_hub.disconnect(websocket)
+
+    # =========================================================================
+    # Phase 05: Computer Control Endpoints
+    # =========================================================================
+
+    async def handle_list_windows(self, request: Request) -> Response:
+        """GET /api/v1/computer/windows - List application windows."""
+        try:
+            self.authenticate_request(request)
+        except DeviceRevokedError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.REVOKED_DEVICE, str(ex)), status_code=403)
+        except AuthenticationError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.UNAUTHENTICATED, str(ex)), status_code=401)
+
+        visible_only = request.query_params.get("visible_only", "true").lower() in ("true", "1", "yes")
+        windows = self.window_controller.list_windows(visible_only=visible_only)
+        return JSONResponse([w.model_dump() for w in windows], status_code=200)
+
+    async def handle_focus_window(self, request: Request) -> Response:
+        """POST /api/v1/computer/windows/focus - Focus window by HWND."""
+        try:
+            device = self.authenticate_request(request)
+        except DeviceRevokedError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.REVOKED_DEVICE, str(ex)), status_code=403)
+        except AuthenticationError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.UNAUTHENTICATED, str(ex)), status_code=401)
+
+        try:
+            body = await request.json()
+            payload = WindowFocusRemoteRequest(**body)
+        except Exception as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.MALFORMED_REQUEST, str(ex)), status_code=400)
+
+        t0 = time.time()
+        try:
+            success = self.window_controller.focus_window(payload.hwnd)
+            self.journal.record(ComputerActionRecord(
+                action_type="WINDOW_FOCUS",
+                target_summary=f"HWND {payload.hwnd}",
+                device_id=device.device_id,
+                success=success,
+                verified=success,
+                verification_method="FOREGROUND_HWND_CHECK",
+                duration_ms=round((time.time() - t0) * 1000, 2),
+            ))
+            return JSONResponse({"success": success, "hwnd": payload.hwnd}, status_code=200)
+        except WindowNotFoundError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.NOT_FOUND, str(ex)), status_code=404)
+        except Exception as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.INTERNAL_ERROR, str(ex)), status_code=500)
+
+    async def handle_close_window(self, request: Request) -> Response:
+        """POST /api/v1/computer/windows/close - Close window by HWND."""
+        try:
+            device = self.authenticate_request(request)
+        except DeviceRevokedError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.REVOKED_DEVICE, str(ex)), status_code=403)
+        except AuthenticationError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.UNAUTHENTICATED, str(ex)), status_code=401)
+
+        try:
+            body = await request.json()
+            payload = WindowCloseRemoteRequest(**body)
+        except Exception as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.MALFORMED_REQUEST, str(ex)), status_code=400)
+
+        t0 = time.time()
+        try:
+            success = self.window_controller.close_window(payload.hwnd)
+            self.journal.record(ComputerActionRecord(
+                action_type="WINDOW_CLOSE",
+                target_summary=f"HWND {payload.hwnd}",
+                risk_level="HIGH",
+                requires_approval=True,
+                device_id=device.device_id,
+                success=success,
+                verified=success,
+                verification_method="HWND_ABSENT_CHECK",
+                duration_ms=round((time.time() - t0) * 1000, 2),
+            ))
+            return JSONResponse({"success": success, "hwnd": payload.hwnd}, status_code=200)
+        except WindowNotFoundError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.NOT_FOUND, str(ex)), status_code=404)
+        except Exception as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.INTERNAL_ERROR, str(ex)), status_code=500)
+
+    async def handle_bounds_window(self, request: Request) -> Response:
+        """POST /api/v1/computer/windows/bounds - Move/resize window."""
+        try:
+            device = self.authenticate_request(request)
+        except DeviceRevokedError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.REVOKED_DEVICE, str(ex)), status_code=403)
+        except AuthenticationError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.UNAUTHENTICATED, str(ex)), status_code=401)
+
+        try:
+            body = await request.json()
+            payload = WindowBoundsRemoteRequest(**body)
+        except Exception as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.MALFORMED_REQUEST, str(ex)), status_code=400)
+
+        t0 = time.time()
+        try:
+            bounds = WindowBounds(x=payload.x, y=payload.y, width=payload.width, height=payload.height)
+            success = self.window_controller.move_resize_window(payload.hwnd, bounds)
+            self.journal.record(ComputerActionRecord(
+                action_type="WINDOW_BOUNDS",
+                target_summary=f"HWND {payload.hwnd} to ({payload.x},{payload.y} {payload.width}x{payload.height})",
+                device_id=device.device_id,
+                success=success,
+                verified=success,
+                verification_method="BOUNDS_COMPARISON",
+                duration_ms=round((time.time() - t0) * 1000, 2),
+            ))
+            return JSONResponse({"success": success, "hwnd": payload.hwnd, "bounds": bounds.model_dump()}, status_code=200)
+        except WindowNotFoundError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.NOT_FOUND, str(ex)), status_code=404)
+        except Exception as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.INTERNAL_ERROR, str(ex)), status_code=500)
+
+    async def handle_list_apps(self, request: Request) -> Response:
+        """GET /api/v1/computer/apps - Enumerate installed applications."""
+        try:
+            self.authenticate_request(request)
+        except DeviceRevokedError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.REVOKED_DEVICE, str(ex)), status_code=403)
+        except AuthenticationError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.UNAUTHENTICATED, str(ex)), status_code=401)
+
+        search = request.query_params.get("search")
+        apps = self.application_controller.list_applications(search=search)
+        return JSONResponse([a.model_dump() for a in apps], status_code=200)
+
+    async def handle_launch_app(self, request: Request) -> Response:
+        """POST /api/v1/computer/apps/launch - Safely launch an application."""
+        try:
+            device = self.authenticate_request(request)
+        except DeviceRevokedError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.REVOKED_DEVICE, str(ex)), status_code=403)
+        except AuthenticationError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.UNAUTHENTICATED, str(ex)), status_code=401)
+
+        try:
+            body = await request.json()
+            payload = AppLaunchRemoteRequest(**body)
+        except Exception as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.MALFORMED_REQUEST, str(ex)), status_code=400)
+
+        t0 = time.time()
+        try:
+            launch_req = LaunchRequest(
+                app_name_or_path=payload.app_name_or_path,
+                arguments=payload.arguments,
+                wait_for_window=payload.wait_for_window,
+                timeout_seconds=payload.timeout_seconds,
+            )
+            res = self.application_controller.launch_application(launch_req)
+            self.journal.record(ComputerActionRecord(
+                action_type="APP_LAUNCH",
+                target_summary=payload.app_name_or_path,
+                risk_level="MEDIUM",
+                device_id=device.device_id,
+                success=res.success,
+                verified=res.window_detected,
+                verification_method="PROCESS_OR_WINDOW_DETECTION",
+                after_state={"pid": res.pid, "hwnd": res.hwnd},
+                duration_ms=round((time.time() - t0) * 1000, 2),
+            ))
+            return JSONResponse(res.model_dump(), status_code=200 if res.success else 400)
+        except ApplicationLaunchError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.REMOTE_EXECUTION_DENIED, str(ex)), status_code=403)
+        except Exception as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.INTERNAL_ERROR, str(ex)), status_code=500)
+
+    async def handle_list_displays(self, request: Request) -> Response:
+        """GET /api/v1/computer/displays - List connected monitors."""
+        try:
+            self.authenticate_request(request)
+        except DeviceRevokedError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.REVOKED_DEVICE, str(ex)), status_code=403)
+        except AuthenticationError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.UNAUTHENTICATED, str(ex)), status_code=401)
+
+        displays = self.screen_capture.list_displays()
+        return JSONResponse(displays, status_code=200)
+
+    async def handle_mouse_click(self, request: Request) -> Response:
+        """POST /api/v1/computer/mouse/click - Perform mouse click."""
+        try:
+            device = self.authenticate_request(request)
+        except DeviceRevokedError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.REVOKED_DEVICE, str(ex)), status_code=403)
+        except AuthenticationError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.UNAUTHENTICATED, str(ex)), status_code=401)
+
+        try:
+            body = await request.json()
+            payload = MouseClickRemoteRequest(**body)
+        except Exception as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.MALFORMED_REQUEST, str(ex)), status_code=400)
+
+        t0 = time.time()
+        try:
+            btn_str = payload.button.lower()
+            btn = MouseButton(btn_str) if btn_str in ("left", "right", "middle") else MouseButton.LEFT
+            res = self.mouse_controller.click(
+                button=btn,
+                count=payload.count,
+                x=payload.x,
+                y=payload.y,
+                relative_to_hwnd=payload.relative_to_hwnd,
+            )
+            self.journal.record(ComputerActionRecord(
+                action_type="MOUSE_CLICK",
+                target_summary=f"{payload.button} click at ({payload.x},{payload.y})",
+                device_id=device.device_id,
+                success=res.success,
+                verified=True,
+                verification_method="INPUT_SENT_CONFIRMED",
+                duration_ms=round((time.time() - t0) * 1000, 2),
+            ))
+            return JSONResponse(res.model_dump(), status_code=200 if res.success else 400)
+        except Exception as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.INTERNAL_ERROR, str(ex)), status_code=500)
+
+    async def handle_mouse_move(self, request: Request) -> Response:
+        """POST /api/v1/computer/mouse/move - Move mouse cursor."""
+        try:
+            self.authenticate_request(request)
+        except DeviceRevokedError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.REVOKED_DEVICE, str(ex)), status_code=403)
+        except AuthenticationError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.UNAUTHENTICATED, str(ex)), status_code=401)
+
+        try:
+            body = await request.json()
+            payload = MouseMoveRemoteRequest(**body)
+        except Exception as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.MALFORMED_REQUEST, str(ex)), status_code=400)
+
+        try:
+            pos = self.mouse_controller.move(payload.x, payload.y, relative_to_hwnd=payload.relative_to_hwnd)
+            return JSONResponse({"success": True, "x": pos[0], "y": pos[1]}, status_code=200)
+        except Exception as ex:
+
+            return JSONResponse(format_error_payload(ProtocolErrorCode.INTERNAL_ERROR, str(ex)), status_code=500)
+
+    async def handle_mouse_scroll(self, request: Request) -> Response:
+        """POST /api/v1/computer/mouse/scroll - Scroll mouse wheel."""
+        try:
+            self.authenticate_request(request)
+        except DeviceRevokedError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.REVOKED_DEVICE, str(ex)), status_code=403)
+        except AuthenticationError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.UNAUTHENTICATED, str(ex)), status_code=401)
+
+        try:
+            body = await request.json()
+            payload = MouseScrollRemoteRequest(**body)
+        except Exception as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.MALFORMED_REQUEST, str(ex)), status_code=400)
+
+        try:
+            res = self.mouse_controller.scroll(payload.clicks, x=payload.x, y=payload.y)
+            return JSONResponse(res.model_dump(), status_code=200 if res.success else 400)
+        except Exception as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.INTERNAL_ERROR, str(ex)), status_code=500)
+
+    async def handle_keyboard_type(self, request: Request) -> Response:
+        """POST /api/v1/computer/keyboard/type - Type text."""
+        try:
+            device = self.authenticate_request(request)
+        except DeviceRevokedError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.REVOKED_DEVICE, str(ex)), status_code=403)
+        except AuthenticationError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.UNAUTHENTICATED, str(ex)), status_code=401)
+
+        try:
+            body = await request.json()
+            payload = KeyboardTypeRemoteRequest(**body)
+        except Exception as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.MALFORMED_REQUEST, str(ex)), status_code=400)
+
+        t0 = time.time()
+        try:
+            res = self.keyboard_controller.type_text(payload.text, target_hwnd=payload.target_hwnd)
+            self.journal.record(ComputerActionRecord(
+                action_type="KEYBOARD_TYPE",
+                target_summary=f"Typed {len(payload.text)} characters into hwnd {payload.target_hwnd}",
+                device_id=device.device_id,
+                success=res.success,
+                verified=True,
+                verification_method="INPUT_STREAM_INJECTED",
+                duration_ms=round((time.time() - t0) * 1000, 2),
+            ))
+            return JSONResponse(res.model_dump(), status_code=200 if res.success else 400)
+        except Exception as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.INTERNAL_ERROR, str(ex)), status_code=500)
+
+    async def handle_keyboard_press(self, request: Request) -> Response:
+        """POST /api/v1/computer/keyboard/press - Press key or combination."""
+        try:
+            self.authenticate_request(request)
+        except DeviceRevokedError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.REVOKED_DEVICE, str(ex)), status_code=403)
+        except AuthenticationError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.UNAUTHENTICATED, str(ex)), status_code=401)
+
+        try:
+            body = await request.json()
+            if "keys" in body:
+                payload = KeyComboRemoteRequest(**body)
+                res = self.keyboard_controller.press_combination(payload.keys, target_hwnd=payload.target_hwnd)
+            else:
+                payload = KeyPressRemoteRequest(**body)
+                res = self.keyboard_controller.press_key(payload.key, target_hwnd=payload.target_hwnd)
+            return JSONResponse(res.model_dump(), status_code=200 if res.success else 400)
+        except InputInjectionError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.PERMISSION_DENIED, str(ex)), status_code=403)
+        except Exception as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.INTERNAL_ERROR, str(ex)), status_code=500)
+
+    async def handle_get_clipboard(self, request: Request) -> Response:
+        """GET /api/v1/computer/clipboard - Read text from clipboard."""
+        try:
+            self.authenticate_request(request)
+        except DeviceRevokedError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.REVOKED_DEVICE, str(ex)), status_code=403)
+        except AuthenticationError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.UNAUTHENTICATED, str(ex)), status_code=401)
+
+        try:
+            content = self.clipboard_controller.inspect()
+            return JSONResponse(content.model_dump(), status_code=200)
+        except ClipboardAccessError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.INTERNAL_ERROR, str(ex)), status_code=500)
+
+    async def handle_set_clipboard(self, request: Request) -> Response:
+        """POST /api/v1/computer/clipboard - Write text to clipboard."""
+        try:
+            device = self.authenticate_request(request)
+        except DeviceRevokedError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.REVOKED_DEVICE, str(ex)), status_code=403)
+        except AuthenticationError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.UNAUTHENTICATED, str(ex)), status_code=401)
+
+        try:
+            body = await request.json()
+            payload = ClipboardWriteRemoteRequest(**body)
+        except Exception as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.MALFORMED_REQUEST, str(ex)), status_code=400)
+
+        try:
+            self.clipboard_controller.write_text(payload.text)
+            content = self.clipboard_controller.inspect()
+            self.journal.record(ComputerActionRecord(
+                action_type="CLIPBOARD_WRITE",
+                target_summary=f"Wrote {content.text_length} chars, hash: {(content.hash_sha256 or '')[:12]}...",
+                device_id=device.device_id,
+                success=True,
+                verified=True,
+                verification_method="SHA256_HASH_VERIFICATION",
+            ))
+            return JSONResponse(content.model_dump(), status_code=200)
+        except ClipboardAccessError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.INTERNAL_ERROR, str(ex)), status_code=500)
+
+
+    async def handle_list_processes(self, request: Request) -> Response:
+        """GET /api/v1/computer/processes - List active processes."""
+        try:
+            self.authenticate_request(request)
+        except DeviceRevokedError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.REVOKED_DEVICE, str(ex)), status_code=403)
+        except AuthenticationError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.UNAUTHENTICATED, str(ex)), status_code=401)
+
+        search = request.query_params.get("search")
+        top_str = request.query_params.get("top", "50")
+        try:
+            top = int(top_str)
+        except ValueError:
+            top = 50
+
+        pfilter = ProcessFilter(name_substring=search, limit=top)
+        procs = self.process_controller.list_processes(pfilter)
+        return JSONResponse([p.model_dump() for p in procs], status_code=200)
+
+    async def handle_stop_process(self, request: Request) -> Response:
+        """POST /api/v1/computer/processes/{pid}/stop - Terminate process."""
+        try:
+            device = self.authenticate_request(request)
+        except DeviceRevokedError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.REVOKED_DEVICE, str(ex)), status_code=403)
+        except AuthenticationError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.UNAUTHENTICATED, str(ex)), status_code=401)
+
+        pid_param = request.path_params.get("pid")
+        try:
+            pid = int(pid_param)
+        except (TypeError, ValueError):
+            return JSONResponse(format_error_payload(ProtocolErrorCode.MALFORMED_REQUEST, "Invalid PID"), status_code=400)
+
+        force = False
+        try:
+            body = await request.json()
+            force = body.get("force", False)
+        except Exception:
+            pass
+
+        t0 = time.time()
+        try:
+            res = self.process_controller.stop_process(pid=pid, force=force)
+            self.journal.record(ComputerActionRecord(
+                action_type="PROCESS_STOP",
+                target_summary=f"PID {pid} ({res.name})",
+                risk_level="CRITICAL",
+                requires_approval=True,
+                device_id=device.device_id,
+                success=res.success,
+                verified=res.success,
+                verification_method="PROCESS_ABSENT_CHECK",
+                duration_ms=round((time.time() - t0) * 1000, 2),
+            ))
+            return JSONResponse(res.model_dump(), status_code=200 if res.success else 400)
+        except ProtectedProcessError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.PERMISSION_DENIED, str(ex)), status_code=403)
+        except ProcessAccessDeniedError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.PERMISSION_DENIED, str(ex)), status_code=403)
+        except Exception as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.INTERNAL_ERROR, str(ex)), status_code=500)
+
+    async def handle_uia_action(self, request: Request) -> Response:
+        """POST /api/v1/computer/uia/action - Inspect or invoke UI Automation element."""
+        try:
+            device = self.authenticate_request(request)
+        except DeviceRevokedError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.REVOKED_DEVICE, str(ex)), status_code=403)
+        except AuthenticationError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.UNAUTHENTICATED, str(ex)), status_code=401)
+
+        try:
+            body = await request.json()
+            payload = UIElementActionRemoteRequest(**body)
+        except Exception as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.MALFORMED_REQUEST, str(ex)), status_code=400)
+
+        target = UIElementTarget(
+            name=payload.name,
+            automation_id=payload.automation_id,
+            control_type=payload.control_type,
+            hwnd=payload.hwnd,
+        )
+        elem = self.ui_automation_controller.find_element(target)
+        if not elem:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.NOT_FOUND, "UI Automation element not found."), status_code=404)
+
+        t0 = time.time()
+        if payload.action == "set_value" and payload.value is not None:
+            ok = self.ui_automation_controller.set_value(elem, payload.value)
+            self.journal.record(ComputerActionRecord(
+                action_type="UIA_SET_VALUE",
+                target_summary=f"Set value on '{elem.name}'",
+                device_id=device.device_id,
+                success=ok,
+                verified=ok,
+                verification_method="UIA_VALUE_CHECK",
+                duration_ms=round((time.time() - t0) * 1000, 2),
+            ))
+            return JSONResponse({"success": ok, "action": "set_value", "value": payload.value, "element": elem.model_dump()}, status_code=200 if ok else 400)
+        else:
+            ok = self.ui_automation_controller.invoke_element(elem)
+            self.journal.record(ComputerActionRecord(
+                action_type="UIA_INVOKE",
+                target_summary=f"Invoke '{elem.name}' ({elem.control_type})",
+                device_id=device.device_id,
+                success=ok,
+                verified=ok,
+                verification_method="UIA_INVOKE_CONFIRMED",
+                duration_ms=round((time.time() - t0) * 1000, 2),
+            ))
+            return JSONResponse({"success": ok, "action": "invoke", "element": elem.model_dump()}, status_code=200 if ok else 400)
+
+
+    async def handle_list_journal(self, request: Request) -> Response:
+        """GET /api/v1/computer/journal - List recent computer action audit records."""
+        try:
+            self.authenticate_request(request)
+        except DeviceRevokedError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.REVOKED_DEVICE, str(ex)), status_code=403)
+        except AuthenticationError as ex:
+            return JSONResponse(format_error_payload(ProtocolErrorCode.UNAUTHENTICATED, str(ex)), status_code=401)
+
+        limit_str = request.query_params.get("limit", "50")
+        try:
+            limit = int(limit_str)
+        except ValueError:
+            limit = 50
+        records = self.journal.list_records(limit=limit)
+        return JSONResponse([r.model_dump() for r in records], status_code=200)
+
