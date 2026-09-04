@@ -169,6 +169,114 @@ public final class NovaClient: Sendable {
         return try JSONDecoder().decode(EmergencyActionResponse.self, from: data)
     }
 
+    // =========================================================================
+    // Phase 05: Computer Control Client Methods
+    // =========================================================================
+
+    public func listWindows(visibleOnly: Bool = true) async throws -> [WindowInfo] {
+        let req = try makeRequest(endpoint: "/api/v1/computer/windows?visible_only=\(visibleOnly)")
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+        return try JSONDecoder().decode([WindowInfo].self, from: data)
+    }
+
+    public func focusWindow(hwnd: Int) async throws {
+        let payload = WindowFocusRequest(hwnd: hwnd)
+        let body = try JSONEncoder().encode(payload)
+        let req = try makeRequest(endpoint: "/api/v1/computer/windows/focus", method: "POST", body: body)
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+    }
+
+    public func closeWindow(hwnd: Int) async throws {
+        let payload = WindowCloseRequest(hwnd: hwnd)
+        let body = try JSONEncoder().encode(payload)
+        let req = try makeRequest(endpoint: "/api/v1/computer/windows/close", method: "POST", body: body)
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+    }
+
+    public func listApps(search: String? = nil) async throws -> [AppInfo] {
+        var ep = "/api/v1/computer/apps"
+        if let s = search, !s.isEmpty, let enc = s.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            ep += "?search=\(enc)"
+        }
+        let req = try makeRequest(endpoint: ep)
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+        return try JSONDecoder().decode([AppInfo].self, from: data)
+    }
+
+    public func launchApp(appNameOrPath: String) async throws -> AppLaunchResponse {
+        let payload = AppLaunchRequest(appNameOrPath: appNameOrPath)
+        let body = try JSONEncoder().encode(payload)
+        let req = try makeRequest(endpoint: "/api/v1/computer/apps/launch", method: "POST", body: body)
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+        return try JSONDecoder().decode(AppLaunchResponse.self, from: data)
+    }
+
+    public func sendMouseMove(x: Int, y: Int) async throws {
+        let payload = MouseMoveRequest(x: x, y: y)
+        let body = try JSONEncoder().encode(payload)
+        let req = try makeRequest(endpoint: "/api/v1/computer/mouse/move", method: "POST", body: body)
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+    }
+
+    public func sendMouseClick(button: String = "left", count: Int = 1, x: Int? = nil, y: Int? = nil) async throws {
+        let payload = MouseClickRequest(button: button, count: count, x: x, y: y)
+        let body = try JSONEncoder().encode(payload)
+        let req = try makeRequest(endpoint: "/api/v1/computer/mouse/click", method: "POST", body: body)
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+    }
+
+    public func sendMouseScroll(clicks: Int) async throws {
+        let payload = MouseScrollRequest(clicks: clicks)
+        let body = try JSONEncoder().encode(payload)
+        let req = try makeRequest(endpoint: "/api/v1/computer/mouse/scroll", method: "POST", body: body)
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+    }
+
+    public func sendKeyboardType(text: String) async throws {
+        let payload = KeyboardTypeRequest(text: text)
+        let body = try JSONEncoder().encode(payload)
+        let req = try makeRequest(endpoint: "/api/v1/computer/keyboard/type", method: "POST", body: body)
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+    }
+
+    public func sendKeyPress(key: String) async throws {
+        let payload = KeyPressRequest(key: key)
+        let body = try JSONEncoder().encode(payload)
+        let req = try makeRequest(endpoint: "/api/v1/computer/keyboard/press", method: "POST", body: body)
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+    }
+
+    public func listProcesses(search: String? = nil, top: Int = 50) async throws -> [ProcessInfo] {
+        var ep = "/api/v1/computer/processes?top=\(top)"
+        if let s = search, !s.isEmpty, let enc = s.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            ep += "&search=\(enc)"
+        }
+        let req = try makeRequest(endpoint: ep)
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+        return try JSONDecoder().decode([ProcessInfo].self, from: data)
+    }
+
+    public func stopProcess(pid: Int, force: Bool = false) async throws -> ProcessStopResponse {
+        let payload = ProcessStopRequest(force: force)
+        let body = try JSONEncoder().encode(payload)
+        let req = try makeRequest(endpoint: "/api/v1/computer/processes/\(pid)/stop", method: "POST", body: body)
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+        return try JSONDecoder().decode(ProcessStopResponse.self, from: data)
+    }
+
+
     private func checkHttpResponse(_ response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse else {
             throw NovaClientError.serverError("Non-HTTP response")

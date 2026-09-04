@@ -201,14 +201,25 @@ public struct CapabilityInfo: Codable, Sendable, Identifiable {
     public let available: Bool
     public let riskLevel: String
     public let description: String
+    public let category: String?
+
+    public init(name: String, available: Bool, riskLevel: String, description: String, category: String? = nil) {
+        self.name = name
+        self.available = available
+        self.riskLevel = riskLevel
+        self.description = description
+        self.category = category
+    }
 
     enum CodingKeys: String, CodingKey {
         case name
         case available
         case riskLevel = "risk_level"
         case description
+        case category
     }
 }
+
 
 public struct CapabilitiesMatrix: Codable, Sendable {
     public let version: String
@@ -372,3 +383,262 @@ public struct WebSocketEvent: Codable, Sendable {
         case data
     }
 }
+
+// =============================================================================
+// Phase 05: Remote Computer Control Models
+// =============================================================================
+
+public struct WindowBounds: Codable, Sendable {
+    public let x: Int
+    public let y: Int
+    public let width: Int
+    public let height: Int
+}
+
+public struct WindowInfo: Codable, Sendable, Identifiable {
+    public var id: Int { hwnd }
+    public let hwnd: Int
+    public let title: String
+    public let processId: Int
+    public let processName: String
+    public let bounds: WindowBounds
+    public let isVisible: Bool
+    public let isMinimized: Bool
+    public let isMaximized: Bool
+    public let isForeground: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case hwnd
+        case title
+        case processId = "process_id"
+        case processName = "process_name"
+        case bounds
+        case isVisible = "is_visible"
+        case isMinimized = "is_minimized"
+        case isMaximized = "is_maximized"
+        case isForeground = "is_foreground"
+    }
+}
+
+public struct WindowFocusRequest: Codable, Sendable {
+    public let hwnd: Int
+    public init(hwnd: Int) { self.hwnd = hwnd }
+}
+
+public struct WindowCloseRequest: Codable, Sendable {
+    public let hwnd: Int
+    public init(hwnd: Int) { self.hwnd = hwnd }
+}
+
+public struct WindowBoundsRequest: Codable, Sendable {
+    public let hwnd: Int
+    public let x: Int
+    public let y: Int
+    public let width: Int
+    public let height: Int
+
+    public init(hwnd: Int, x: Int, y: Int, width: Int, height: Int) {
+        self.hwnd = hwnd
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+    }
+}
+
+public struct AppInfo: Codable, Sendable, Identifiable {
+    public var id: String { executablePath }
+    public let name: String
+    public let executablePath: String
+    public let publisher: String?
+    public let isRunning: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case executablePath = "executable_path"
+        case publisher
+        case isRunning = "is_running"
+    }
+}
+
+public struct AppLaunchRequest: Codable, Sendable {
+    public let appNameOrPath: String
+    public let arguments: [String]
+    public let waitForWindow: Bool
+    public let timeoutSeconds: Double
+
+    public init(appNameOrPath: String, arguments: [String] = [], waitForWindow: Bool = true, timeoutSeconds: Double = 10.0) {
+        self.appNameOrPath = appNameOrPath
+        self.arguments = arguments
+        self.waitForWindow = waitForWindow
+        self.timeoutSeconds = timeoutSeconds
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case appNameOrPath = "app_name_or_path"
+        case arguments
+        case waitForWindow = "wait_for_window"
+        case timeoutSeconds = "timeout_seconds"
+    }
+}
+
+public struct AppLaunchResponse: Codable, Sendable {
+    public let success: Bool
+    public let pid: Int?
+    public let hwnd: Int?
+    public let windowDetected: Bool
+    public let message: String?
+
+    enum CodingKeys: String, CodingKey {
+        case success
+        case pid
+        case hwnd
+        case windowDetected = "window_detected"
+        case message
+    }
+}
+
+public struct ProcessInfo: Codable, Sendable, Identifiable {
+    public var id: Int { pid }
+    public let pid: Int
+    public let name: String
+    public let cpuPercent: Double
+    public let memoryMb: Double
+    public let status: String
+    public let isProtected: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case pid
+        case name
+        case cpuPercent = "cpu_percent"
+        case memoryMb = "memory_mb"
+        case status
+        case isProtected = "is_protected"
+    }
+}
+
+public struct ProcessStopRequest: Codable, Sendable {
+    public let force: Bool
+    public init(force: Bool = false) { self.force = force }
+}
+
+public struct ProcessStopResponse: Codable, Sendable {
+    public let success: Bool
+    public let pid: Int
+    public let processName: String
+    public let verifiedTerminated: Bool
+    public let message: String?
+
+    enum CodingKeys: String, CodingKey {
+        case success
+        case pid
+        case processName = "process_name"
+        case verifiedTerminated = "verified_terminated"
+        case message
+    }
+}
+
+public struct MouseMoveRequest: Codable, Sendable {
+    public let x: Int
+    public let y: Int
+    public let relativeToHwnd: Int?
+
+    public init(x: Int, y: Int, relativeToHwnd: Int? = nil) {
+        self.x = x
+        self.y = y
+        self.relativeToHwnd = relativeToHwnd
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case x
+        case y
+        case relativeToHwnd = "relative_to_hwnd"
+    }
+}
+
+public struct MouseClickRequest: Codable, Sendable {
+    public let button: String
+    public let count: Int
+    public let x: Int?
+    public let y: Int?
+    public let relativeToHwnd: Int?
+
+    public init(button: String = "left", count: Int = 1, x: Int? = nil, y: Int? = nil, relativeToHwnd: Int? = nil) {
+        self.button = button
+        self.count = count
+        self.x = x
+        self.y = y
+        self.relativeToHwnd = relativeToHwnd
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case button
+        case count
+        case x
+        case y
+        case relativeToHwnd = "relative_to_hwnd"
+    }
+}
+
+public struct MouseScrollRequest: Codable, Sendable {
+    public let clicks: Int
+    public let x: Int?
+    public let y: Int?
+
+    public init(clicks: Int, x: Int? = nil, y: Int? = nil) {
+        self.clicks = clicks
+        self.x = x
+        self.y = y
+    }
+}
+
+public struct KeyboardTypeRequest: Codable, Sendable {
+    public let text: String
+    public let targetHwnd: Int?
+
+    public init(text: String, targetHwnd: Int? = nil) {
+        self.text = text
+        self.targetHwnd = targetHwnd
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case text
+        case targetHwnd = "target_hwnd"
+    }
+}
+
+public struct KeyPressRequest: Codable, Sendable {
+    public let key: String
+    public let targetHwnd: Int?
+
+    public init(key: String, targetHwnd: Int? = nil) {
+        self.key = key
+        self.targetHwnd = targetHwnd
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case key
+        case targetHwnd = "target_hwnd"
+    }
+}
+
+public struct KeyComboRequest: Codable, Sendable {
+    public let keys: [String]
+    public let targetHwnd: Int?
+
+    public init(keys: [String], targetHwnd: Int? = nil) {
+        self.keys = keys
+        self.targetHwnd = targetHwnd
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case keys
+        case targetHwnd = "target_hwnd"
+    }
+}
+
+public struct InputResponse: Codable, Sendable {
+    public let success: Bool
+    public let message: String?
+}
+
