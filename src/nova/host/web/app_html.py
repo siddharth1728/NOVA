@@ -577,6 +577,35 @@ WEB_APP_HTML = r"""<!DOCTYPE html>
       box-shadow: 0 0 16px rgba(0, 240, 255, 0.3);
     }
 
+    .pin-keypad {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin: 10px 0;
+    }
+
+    .keypad-btn {
+      background: rgba(22, 27, 34, 0.9);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      color: #FFF;
+      font-size: 20px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      padding: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    .keypad-btn:active {
+      background: var(--cyan-dim);
+      border-color: var(--cyan-glow);
+      transform: scale(0.94);
+    }
+
     .btn-primary {
       background: linear-gradient(135deg, #00F0FF, #0072FF);
       color: #000;
@@ -855,10 +884,26 @@ WEB_APP_HTML = r"""<!DOCTYPE html>
           Enter the 6-digit PIN code displayed on your Windows host terminal (e.g. from <code>nova host pair-code</code>) to authorize this iPhone.
         </p>
         <div class="pair-form">
-          <input type="text" id="pinInput" class="pin-input" maxlength="7" placeholder="000 000" inputmode="numeric">
+          <input type="text" id="pinInput" class="pin-input" maxlength="12" placeholder="000 000" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code">
+          
+          <div class="pin-keypad">
+            <button type="button" class="keypad-btn" onclick="tapKey('1')">1</button>
+            <button type="button" class="keypad-btn" onclick="tapKey('2')">2</button>
+            <button type="button" class="keypad-btn" onclick="tapKey('3')">3</button>
+            <button type="button" class="keypad-btn" onclick="tapKey('4')">4</button>
+            <button type="button" class="keypad-btn" onclick="tapKey('5')">5</button>
+            <button type="button" class="keypad-btn" onclick="tapKey('6')">6</button>
+            <button type="button" class="keypad-btn" onclick="tapKey('7')">7</button>
+            <button type="button" class="keypad-btn" onclick="tapKey('8')">8</button>
+            <button type="button" class="keypad-btn" onclick="tapKey('9')">9</button>
+            <button type="button" class="keypad-btn" onclick="tapKey('clear')" style="color:var(--crimson); font-size:16px;">CLR</button>
+            <button type="button" class="keypad-btn" onclick="tapKey('0')">0</button>
+            <button type="button" class="keypad-btn" onclick="tapKey('back')" style="color:var(--amber); font-size:18px;">⌫</button>
+          </div>
+
           <button class="btn-primary" onclick="submitPairing()">Pair This iPhone</button>
-          <button class="btn-screen-refresh" onclick="quickLocalPair()" style="justify-content: center;">
-            ⚡ Quick Auto-Pair (Local Network)
+          <button class="btn-screen-refresh" onclick="quickLocalPair()" style="justify-content: center; font-weight:700; color:#00F0FF; padding: 12px;">
+            ⚡ Quick Auto-Pair (1-Tap Connect)
           </button>
         </div>
       </div>
@@ -965,12 +1010,18 @@ WEB_APP_HTML = r"""<!DOCTYPE html>
       const statusDot = document.getElementById("statusDot");
       const statusText = document.getElementById("statusText");
 
+      if (!authToken) {
+        if (statusDot) statusDot.className = "status-dot";
+        if (statusText) statusText.innerText = "Pairing Required";
+        return;
+      }
+
       if (ws) {
         try { ws.close(); } catch(e) {}
       }
 
       const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-      const wsUrl = `${protocol}//${location.host}/ws/v1/events${authToken ? '?token=' + encodeURIComponent(authToken) : ''}`;
+      const wsUrl = `${protocol}//${location.host}/ws/v1/events?token=${encodeURIComponent(authToken)}`;
 
       statusDot.className = "status-dot reconnecting";
       statusText.innerText = "Connecting...";
@@ -995,7 +1046,9 @@ WEB_APP_HTML = r"""<!DOCTYPE html>
       ws.onclose = () => {
         statusDot.className = "status-dot";
         statusText.innerText = "Disconnected";
-        setTimeout(connectWebSocket, 3000);
+        if (authToken) {
+          setTimeout(connectWebSocket, 3000);
+        }
       };
 
       ws.onerror = () => {
@@ -1241,20 +1294,58 @@ WEB_APP_HTML = r"""<!DOCTYPE html>
       }
     }
 
-    // Device Pairing
+    // Device Pairing Logic
+    function extractDigits(str) {
+      if (!str) return "";
+      let res = "";
+      for (let i = 0; i < str.length; i++) {
+        if (str[i] >= "0" && str[i] <= "9") res += str[i];
+      }
+      return res;
+    }
+
+    function formatAndSetPin(digits) {
+      const pinInput = document.getElementById("pinInput");
+      if (!pinInput) return;
+      if (digits.length > 3) {
+        pinInput.value = digits.substring(0, 3) + " " + digits.substring(3, 6);
+      } else {
+        pinInput.value = digits;
+      }
+      if (digits.length === 6) {
+        setTimeout(submitPairing, 120);
+      }
+    }
+
+    function tapKey(k) {
+      const pinInput = document.getElementById("pinInput");
+      let digits = extractDigits(pinInput.value);
+      if (k === 'clear') {
+        digits = "";
+      } else if (k === 'back') {
+        digits = digits.slice(0, -1);
+      } else if (digits.length < 6) {
+        digits += k;
+      }
+      formatAndSetPin(digits);
+    }
+
     async function submitPairing() {
-      const pinRaw = document.getElementById("pinInput").value.replace(/\s+/g, "");
-      if (pinRaw.length !== 6) {
-        showToast("Enter a valid 6-digit PIN");
+      const pinInput = document.getElementById("pinInput");
+      const digits = extractDigits(pinInput.value);
+      if (digits.length !== 6) {
+        showToast("Please enter a 6-digit PIN (" + digits.length + "/6 entered)");
         return;
       }
+
+      showToast("Pairing with host...");
 
       try {
         const resp = await fetch("/api/v1/pair", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            pairing_code: pinRaw,
+            pairing_code: digits,
             device_id: deviceId,
             device_name: "iPhone Controller (Web)",
             platform: "iOS"
@@ -1270,7 +1361,7 @@ WEB_APP_HTML = r"""<!DOCTYPE html>
           connectWebSocket();
           switchTab("home");
         } else {
-          showToast("Pairing failed: " + (data.error?.message || "Invalid PIN"));
+          showToast("Pairing failed: " + (data.error?.message || "Invalid or expired PIN"));
         }
       } catch (e) {
         showToast("Pairing network error: " + e.message);
@@ -1278,18 +1369,18 @@ WEB_APP_HTML = r"""<!DOCTYPE html>
     }
 
     async function quickLocalPair() {
+      showToast("Fetching active pairing code...");
       try {
         const resp = await fetch("/api/v1/pair/code");
         if (resp.ok) {
           const data = await resp.json();
           if (data.code) {
-            document.getElementById("pinInput").value = data.code;
-            submitPairing();
+            formatAndSetPin(data.code);
             return;
           }
         }
       } catch(e) {}
-      showToast("Please run 'nova host pair-code' on your PC and enter the PIN");
+      showToast("No active pairing code found. Run 'nova host pair-code' on PC");
     }
 
     function unpairDevice() {
@@ -1327,11 +1418,8 @@ WEB_APP_HTML = r"""<!DOCTYPE html>
       // PIN input auto-formatting
       const pinInput = document.getElementById("pinInput");
       pinInput.addEventListener("input", (e) => {
-        let val = e.target.value.replace(/\\D/g, "");
-        if (val.length > 3) {
-          val = val.substring(0, 3) + " " + val.substring(3, 6);
-        }
-        e.target.value = val;
+        const digits = extractDigits(e.target.value);
+        formatAndSetPin(digits);
       });
     });
   </script>
