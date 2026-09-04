@@ -46,11 +46,20 @@ In Phase 02, NOVA introduces safe, reversible filesystem operations:
 
 ---
 
-## 4. Secret & Credential Management
+### 4.1 Remote Protocol & Device Security (Phase 03)
 
-1. **No Hardcoded Secrets**: All API tokens and credentials must be supplied via environment variables or `.env`.
-2. **Safe Representations**: Credentials in memory are encapsulated via `pydantic.SecretStr` to prevent accidental string casting.
-3. **Audit Scrubbing**: The audit trail enforces automated regex scrubbing for Google API keys (`AIzaSy...`), Bearer tokens, and sensitive key names.
+1. **Ephemeral PIN Device Onboarding**:
+   - Pairing is initiated exclusively from the Windows host terminal (`nova host pair-code`).
+   - Pairing PINs are 6-digit numeric codes generated with `secrets.randbelow` and expire in 300 seconds.
+   - Pairing codes are destroyed upon first use (single-use token exchange).
+2. **Device Trust Registry & Revocation**:
+   - Devices are tracked in `.nova/devices.json`.
+   - Access tokens are HMAC-SHA256 signed JWTs with 30-day expiration.
+   - Host administrators can revoke device access instantly with `nova host revoke <device_id>`. Revoked tokens are immediately denied (HTTP 403 `REVOKED_DEVICE`).
+3. **Strict Remote Policy Guardrails**:
+   - Arbitrary command execution (`run_command`, PowerShell, `cmd.exe`) is **unconditionally prohibited over the remote protocol**.
+   - Any remote query attempting to invoke shell commands is immediately rejected with HTTP 403 `REMOTE_EXECUTION_DENIED`.
+   - Workstation lock (`LockWorkStation`) requires authenticated device session and supports dry-run validation.
 
 
 ---

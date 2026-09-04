@@ -7,20 +7,19 @@ NOVA is a local-first personal AI operating layer designed to safely understand 
 
 ---
 
-## Current Status (v0.2.0)
+## Current Status (v0.3.0)
 
-Phase 02 elevates NOVA into a **controlled workspace operator**, enabling safe, reversible, multi-step mutations within the configured workspace.
+Phase 03 transforms NOVA into a **distributed personal AI computing system**, pairing a native **iOS Control Center** running on iPhone with an authoritative **Windows NOVA Host** running on the user's PC.
 
 ### Core Capabilities:
-- **Six Workspace Mutation Tools**: `create_directory`, `create_file`, `edit_file`, `rename_file`, `move_file`, `copy_file`.
-- **Atomic File Operations**: Automatic sibling temp file creation and `os.replace` replacement on Windows NTFS and POSIX.
-- **Transaction & LIFO Rollback Manager**: Atomic groups of operations with automated snapshot backups under `.nova/backups/`. Reverses operations in strict LIFO order upon failure.
-- **Stale-State Protection**: Detects conflicting modifications made since planning (`FILE_CHANGED_SINCE_PLAN`).
-- **Multi-Step Task Planning**: Dependency-ordered milestone decomposition with Kahn's algorithm cycle detection.
-- **Cryptographic Plan Integrity**: Deterministic SHA-256 plan hashing preventing runtime argument or tool drift (`PlanDriftError`).
-- **Empirical Verification**: Direct filesystem checks on disk (existence, absence after move/rename, SHA-256 hash preservation).
-- **Interactive CLI Experience**: `nova plan` for pure dry-run inspection and `nova execute` for transactional apply with user confirmation.
-- **Automated Test Suite**: 74 unit and integration tests passing with 100% success.
+- **Distributed Host-Client Architecture**: Windows PC remains authoritative execution host; iPhone acts as thin observation, query, and emergency control surface.
+- **NOVA Remote Protocol v1**: Clean typed protocol schemas (`models.py`) supporting HTTP REST and real-time WebSockets (`/ws/v1/events`).
+- **Device Pairing & Session Trust**: Ephemeral 6-digit PIN onboarding (`nova host pair-code`), persistent device trust registry (`.nova/devices.json`), HMAC-SHA256 JWT bearer tokens, and immediate device revocation (`nova host revoke`).
+- **Windows Control Layer**: Live hardware telemetry (`psutil`), desktop screen capture (Win32 GDI / Pillow) with headless/locked safe fallback, and remote workstation lock (`LockWorkStation`).
+- **Remote Agent Goal Dispatch**: Dispatches natural language tasks from mobile to `NovaRuntime` with empirical verification and append-only audit logging.
+- **Strict Remote Security**: High-risk arbitrary shell execution (`run_command`, PowerShell) is strictly blocked over remote protocol.
+- **Native iOS 18 Application (`ios/NOVA/`)**: Pure Swift 6 / SwiftUI application with 5-tab interface: Dashboard Gauges, Agent Query Dispatch, Desktop Screen Viewer, Live Activity Feed, and Device Settings.
+- **Transactional Workspace Operations**: Full Phase 02 capability preserved (multi-step planning, atomic file operations, LIFO rollback).
 
 ---
 
@@ -76,6 +75,30 @@ Review plan, authorize with confirmation gate, execute mutations, and verify emp
 ```powershell
 .venv\Scripts\nova query "List the important files in the current workspace" --simulate
 ```
+
+### Windows Host Service (Phase 03)
+Start the background ASGI host service on your Windows PC:
+```powershell
+.venv\Scripts\nova host start --port 8000
+```
+
+Generate an ephemeral 6-digit PIN code to pair your iPhone:
+```powershell
+.venv\Scripts\nova host pair-code
+```
+
+Inspect or revoke paired mobile devices:
+```powershell
+.venv\Scripts\nova host devices
+.venv\Scripts\nova host revoke <device_id>
+```
+
+---
+
+## iOS Control Center (`ios/NOVA/`)
+
+The native iOS client allows you to monitor and control your Windows PC directly from your iPhone.
+See [docs/ios/build-and-signing.md](docs/ios/build-and-signing.md) for full macOS/Xcode build instructions, entitlements, and TestFlight deployment guidelines.
 
 ---
 

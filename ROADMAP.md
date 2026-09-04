@@ -31,7 +31,23 @@ NOVA is evolving systematically through disciplined phases. Each phase expands c
 
 ---
 
-## Phase 03: Specialized Subagent Activation & Delegation (NEXT)
+## Phase 03: Distributed Personal Computing Architecture (COMPLETED)
+- [x] Authoritative Windows NOVA Host service (`src/nova/host/`) using Starlette ASGI and Uvicorn.
+- [x] NOVA Remote Protocol v1 (`src/nova/protocol/`) for typed JSON REST and real-time WebSockets (`/ws/v1/events`).
+- [x] Ephemeral 6-digit PIN device onboarding (`nova host pair-code`) with 300s TTL and single-use consumption.
+- [x] Persistent Device Trust Registry (`.nova/devices.json`) and HMAC-SHA256 JWT bearer token issuance.
+- [x] Instant host device revocation (`nova host revoke <device_id>`).
+- [x] Live hardware telemetry provider (`psutil`) reading CPU, RAM, disk, OS version, and host uptime.
+- [x] Desktop screen capture provider (Win32 GDI / Pillow) with safe diagnostic canvas frame fallback for detached sessions.
+- [x] Emergency workstation lock provider (`LockWorkStation`).
+- [x] Capability discovery matrix (`GET /api/v1/capabilities`) strictly prohibiting remote shell execution.
+- [x] Remote agent goal dispatch with empirical verification and append-only audit logging.
+- [x] Native iOS 18 Control Center (`ios/NOVA/`) with 5-tab SwiftUI interface (Dashboard, Agent, Computer, Activity, Settings).
+- [x] Comprehensive test suite (93 total tests passing, 100% success).
+
+---
+
+## Phase 04: Specialized Subagent Activation & Delegation (NEXT)
 - [ ] Activation of static subagents via Antigravity `SubagentConfig`.
 - [ ] Planner Subagent: Autonomous goal decomposition.
 - [ ] Researcher Subagent: Document synthesis and web research.

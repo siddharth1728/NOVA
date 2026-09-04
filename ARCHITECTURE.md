@@ -123,10 +123,25 @@ Custom tools are registered via `@nova_tool` decorator with automated schema inf
   - Verifies content hashes against expected postconditions.
   - Validates clean restoration of pre-transaction state during rollback.
 
+### 2.10 Distributed Windows Host Service & Protocol (`nova.host`, `nova.protocol`)
+- **Starlette ASGI Engine**: Asynchronous HTTP REST + WebSocket server binding to configurable interface and port (`NOVA_HOST_BIND`, `NOVA_HOST_PORT`).
+- **NOVA Remote Protocol v1**: Clean typed schemas for device pairing, hardware metrics, desktop snapshots, agent dispatch, and emergency lock.
+- **Ephemeral PIN Pairing**: Single-use 6-digit numeric codes generated with `secrets.randbelow` and 300-second TTL.
+- **Device Trust Registry**: Persistent JSON store (`.nova/devices.json`) managing authorized and revoked clients.
+- **HMAC-SHA256 JWT Bearer Auth**: 30-day session tokens validated per request, cross-checked with device status.
+- **Real-Time WebSocket Hub**: `/ws/v1/events` streams periodic telemetry ticks, agent plan transitions, and audit events.
+
+### 2.11 Windows Control Layer (`nova.control`)
+- **System Metrics Provider**: Gathers live CPU, RAM, disk, OS version, and uptime via `psutil`.
+- **Screen Capture Provider**: Captures desktop frames via Pillow `ImageGrab` and Win32 GDI `BitBlt` with graceful fallback to diagnostic canvas frames when running in headless or locked workstation sessions.
+- **Workstation Lock Provider**: Directly invokes Win32 `LockWorkStation` with dry-run support.
+- **Capability Registry**: Discovers and exposes available host capabilities with risk classification; strictly disables remote shell execution.
+
 ---
 
 ## 3. Skills and Subagent Extensibility
 
 - **Skills**: Fully aligned with the Antigravity skill layout (`<skill_dir>/SKILL.md`). `workspace-explorer` provides a reference implementation.
 - **Subagents**: Defined by `SubagentBlueprint` specifications (Planner, Researcher, Coder, Browser Operator, Computer Operator, Verifier, Security Reviewer, Document Specialist). Blueprints map directly to native `SubagentConfig`.
+- **iOS Control Surface**: Native Swift 6 / SwiftUI application (`ios/NOVA/`) communicating seamlessly with the Windows Host agent.
 

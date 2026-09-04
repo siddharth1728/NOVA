@@ -85,6 +85,28 @@ class NovaSettings(BaseSettings):
         description="Logging level threshold",
     )
 
+    # Host & Remote Control (Phase 03)
+    host_bind: str = Field(
+        default="127.0.0.1",
+        description="Network interface for the Windows Host service to bind to",
+    )
+    host_port: int = Field(
+        default=8000,
+        description="TCP port for the Windows Host service",
+    )
+    host_secret: SecretStr | None = Field(
+        default=None,
+        description="Secret key for JWT device authentication (auto-generated if None)",
+    )
+    pairing_code_ttl_seconds: int = Field(
+        default=300,
+        description="Time-to-live for ephemeral 6-digit pairing codes in seconds",
+    )
+    device_token_expire_days: int = Field(
+        default=30,
+        description="Validity period for device session tokens in days",
+    )
+
     @field_validator("workspace_root", mode="after")
     @classmethod
     def _resolve_workspace_root(cls, v: Path) -> Path:
@@ -106,6 +128,11 @@ class NovaSettings(BaseSettings):
     def memory_dir(self) -> Path:
         """Directory path for local-first memory storage."""
         return self.data_dir / "memory"
+
+    @property
+    def devices_file(self) -> Path:
+        """File path for persistent device trust registry."""
+        return self.data_dir / "devices.json"
 
     def get_api_key_value(self) -> str | None:
         """Retrieve raw API key string safely, checking ambient env if unset."""

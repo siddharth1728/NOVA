@@ -47,3 +47,12 @@ def test_cli_execute_with_yes_flag(temp_workspace: Path) -> None:
     assert project_dir.exists() and project_dir.is_dir()
     assert (project_dir / "src").exists()
     assert (project_dir / "README.md").exists()
+
+
+def test_cli_host_pair_code_and_devices():
+    result = runner.invoke(app, ["host", "pair-code"])
+    assert result.exit_code == 0
+    assert "Device Pairing Code" in result.stdout
+
+    devices_result = runner.invoke(app, ["host", "devices"])
+    assert devices_result.exit_code == 0

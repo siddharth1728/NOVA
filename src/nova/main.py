@@ -282,6 +282,109 @@ def execute_command(
         sys.exit(1)
 
 
+# Host Subcommands (Phase 03)
+host_app = typer.Typer(name="host", help="Manage NOVA Windows Host service and mobile device pairing.")
+app.add_typer(host_app, name="host")
+
+
+@host_app.command(name="start")
+def host_start_command(
+    bind: Annotated[str, typer.Option("--host", "-h", help="Network host/interface to bind")] = "127.0.0.1",
+    port: Annotated[int, typer.Option("--port", "-p", help="TCP port to listen on")] = 8000,
+    log_level: Annotated[str, typer.Option("--log-level", "-l", help="Server log level")] = "info",
+) -> None:
+    """Starts the NOVA Windows Host ASGI service for mobile and remote control."""
+    from nova.host.server import create_host_app, run_host_server
+
+    settings = get_settings()
+    console.print(
+        Panel(
+            f"[bold cyan]NOVA Windows Host Service[/bold cyan]\n"
+            f"[white]Binding to:[/white] http://{bind}:{port}\n"
+            f"[white]WebSocket:[/white] ws://{bind}:{port}/ws/v1/events\n"
+            f"[white]Workspace:[/white] {settings.workspace_root}\n"
+            f"[white]Device Registry:[/white] {settings.devices_file}\n"
+            f"[green]Ready for mobile device connections.[/green]",
+            title="[bold green]NOVA Host Online[/bold green]",
+            border_style="green",
+        )
+    )
+    app_instance = create_host_app(settings=settings)
+    run_host_server(app_instance, host=bind, port=port, log_level=log_level)
+
+
+@host_app.command(name="pair-code")
+def host_pair_code_command(
+    ttl: Annotated[int, typer.Option("--ttl", "-t", help="Validity period in seconds")] = 300,
+) -> None:
+    """Generates an ephemeral 6-digit pairing code to authorize a new mobile device."""
+    from nova.host.pairing import PairingManager
+
+    pm = PairingManager(default_ttl_seconds=ttl)
+    code, exp = pm.generate_code()
+
+    console.print(
+        Panel(
+            f"\n[bold yellow]        {code[:3]} {code[3:]}        [/bold yellow]\n\n"
+            f"[white]Expires at:[/white] {exp.strftime('%H:%M:%S UTC')}\n"
+            f"[white]Enter this code in the NOVA iOS app to link this device.[/white]",
+            title="[bold cyan]Device Pairing Code[/bold cyan]",
+            border_style="yellow",
+        )
+    )
+
+
+@host_app.command(name="devices")
+def host_devices_command() -> None:
+    """Lists all paired client devices in the host trust registry."""
+    from nova.host.auth import DeviceRegistry
+
+    settings = get_settings()
+    reg = DeviceRegistry(settings.devices_file)
+    devices = reg.list_devices()
+
+    if not devices:
+        console.print("[yellow]No devices currently paired. Run 'nova host pair-code' to link a device.[/yellow]")
+        return
+
+    table = Table(title="Paired NOVA Client Devices", show_header=True, header_style="bold cyan")
+    table.add_column("Device ID", style="bold")
+    table.add_column("Name")
+    table.add_column("Platform")
+    table.add_column("Role")
+    table.add_column("Status")
+    table.add_column("Last Seen")
+
+    for d in devices:
+        status_color = "green" if d.status.value == "ACTIVE" else "red"
+        table.add_row(
+            d.device_id,
+            d.name,
+            d.platform,
+            d.role.value,
+            f"[{status_color}]{d.status.value}[/{status_color}]",
+            d.last_seen_at or "Never",
+        )
+
+    console.print(table)
+
+
+@host_app.command(name="revoke")
+def host_revoke_command(
+    device_id: Annotated[str, typer.Argument(help="ID of the device to revoke access from")],
+) -> None:
+    """Revokes access for a specified client device immediately."""
+    from nova.host.auth import DeviceRegistry
+
+    settings = get_settings()
+    reg = DeviceRegistry(settings.devices_file)
+    if reg.revoke_device(device_id):
+        console.print(f"[bold green]Device '{device_id}' has been REVOKED.[/bold green] All future requests will be denied.")
+    else:
+        console.print(f"[bold red]Device '{device_id}' not found in registry.[/bold red]")
+        sys.exit(1)
+
+
 def cli() -> None:
     """Entry point for project scripts."""
     app()

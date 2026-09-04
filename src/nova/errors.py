@@ -185,3 +185,27 @@ class PlanDriftError(NovaError):
         self.observed_hash = observed_hash
         self.drift_reason = drift_reason
 
+
+class ProtocolError(NovaError):
+    """Raised when incoming protocol envelopes or messages are malformed or invalid."""
+
+
+class AuthenticationError(NovaError):
+    """Raised when client device credentials, tokens, or pairing codes fail validation."""
+
+
+class DeviceRevokedError(AuthenticationError):
+    """Raised when a paired device has been explicitly revoked by the host workstation."""
+
+
+class PairingExpiredError(AuthenticationError):
+    """Raised when a pairing code or invitation window has expired."""
+
+
+class CapabilityUnavailableError(NovaError):
+    """Raised when a requested remote capability is unsupported or unavailable on the host."""
+
+
+class RemoteExecutionDeniedError(PermissionDeniedError):
+    """Raised when an operation requested over remote protocol is forbidden by remote policy."""
+
