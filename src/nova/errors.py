@@ -209,3 +209,84 @@ class CapabilityUnavailableError(NovaError):
 class RemoteExecutionDeniedError(PermissionDeniedError):
     """Raised when an operation requested over remote protocol is forbidden by remote policy."""
 
+
+# =============================================================================
+# Phase 05: Computer Control Exceptions
+# =============================================================================
+
+
+class ComputerControlError(NovaError):
+    """Base exception for all Windows Computer Control failures."""
+
+
+class TargetNotFoundError(ComputerControlError):
+    """Target application, window, or UI element could not be found."""
+
+
+class AmbiguousTargetError(ComputerControlError):
+    """Multiple candidates matched a targeting selector without clear resolution."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        candidates: list[Any] | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        merged = {}
+        if candidates is not None:
+            merged["candidates"] = candidates
+        if details:
+            merged.update(details)
+        super().__init__(message, details=merged)
+        self.candidates = candidates or (details.get("candidates") if details else [])
+
+
+class WindowNotFoundError(ComputerControlError):
+    """Requested window handle (HWND) does not exist or has been closed."""
+
+
+class ApplicationLaunchError(ComputerControlError):
+    """Failed to launch or detect running state of requested application."""
+
+
+class InputInjectionError(ComputerControlError):
+    """Mouse or keyboard input event injection failed."""
+
+
+class ClipboardAccessError(ComputerControlError):
+    """Failed to open, read, or write to system clipboard."""
+
+
+class ProcessAccessDeniedError(ComputerControlError):
+    """Process operation failed due to access rights or security permissions."""
+
+
+class ProtectedProcessError(ComputerControlError):
+    """Attempted prohibited operation against a protected system or host process."""
+
+
+class UIAutomationError(ComputerControlError):
+    """Windows UI Automation tree traversal or element action failed."""
+
+
+class VisionConfidenceError(ComputerControlError):
+    """Vision target resolution failed to meet minimum confidence threshold."""
+
+
+class StaleVisionTargetError(ComputerControlError):
+    """Vision coordinates rejected because screen state or timestamp is stale."""
+
+
+class ComputerVerificationError(ComputerControlError):
+    """Computer action completed execution but failed empirical verification check."""
+
+
+class ComputerActionTimeoutError(ComputerControlError):
+    """Computer operation exceeded maximum allotted execution timeout."""
+
+
+class ComputerActionCancelledError(ComputerControlError):
+    """Computer operation was terminated early by cancellation handle."""
+
+

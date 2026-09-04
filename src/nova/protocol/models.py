@@ -153,6 +153,7 @@ class CapabilityInfo(BaseModel):
     available: bool
     risk_level: str
     description: str
+    category: str = "general"
 
 
 class CapabilitiesMatrix(BaseModel):
@@ -242,3 +243,85 @@ class WebSocketEvent(BaseModel):
     event_type: str = Field(description="telemetry, agent_plan, agent_step, task_update, audit, alert")
     timestamp: str = Field(default_factory=_utc_now_iso)
     data: dict[str, Any] = Field(default_factory=dict)
+
+
+# =============================================================================
+# Phase 05: Remote Computer Control Requests
+# =============================================================================
+
+
+class WindowFocusRemoteRequest(BaseModel):
+    hwnd: int
+
+
+class WindowCloseRemoteRequest(BaseModel):
+    hwnd: int
+
+
+class WindowBoundsRemoteRequest(BaseModel):
+    hwnd: int
+    x: int
+    y: int
+    width: int
+    height: int
+
+
+class AppLaunchRemoteRequest(BaseModel):
+    app_name_or_path: str
+    arguments: list[str] = Field(default_factory=list)
+    wait_for_window: bool = True
+    timeout_seconds: float = 10.0
+
+
+class MouseMoveRemoteRequest(BaseModel):
+    x: int
+    y: int
+    relative_to_hwnd: int | None = None
+
+
+class MouseClickRemoteRequest(BaseModel):
+    button: str = "left"  # left, right, middle
+    count: int = 1
+    x: int | None = None
+    y: int | None = None
+    relative_to_hwnd: int | None = None
+
+
+class MouseScrollRemoteRequest(BaseModel):
+    clicks: int
+    x: int | None = None
+    y: int | None = None
+
+
+class KeyboardTypeRemoteRequest(BaseModel):
+    text: str
+    target_hwnd: int | None = None
+
+
+class KeyPressRemoteRequest(BaseModel):
+    key: str
+    target_hwnd: int | None = None
+
+
+class KeyComboRemoteRequest(BaseModel):
+    keys: list[str]
+    target_hwnd: int | None = None
+
+
+class ClipboardWriteRemoteRequest(BaseModel):
+    text: str
+
+
+class ProcessStopRemoteRequest(BaseModel):
+    pid: int
+    force: bool = False
+
+
+class UIElementActionRemoteRequest(BaseModel):
+    action: str = "invoke"  # invoke or set_value
+    name: str | None = None
+    automation_id: str | None = None
+    control_type: str | None = None
+    value: str | None = None
+    hwnd: int | None = None
+

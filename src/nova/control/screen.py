@@ -5,18 +5,22 @@ from datetime import datetime, timezone
 import io
 import socket
 import logging
+from typing import Any
 from PIL import Image, ImageDraw
 
+from nova.control.interfaces import ScreenController
+from nova.errors import WindowNotFoundError
 from nova.protocol.models import ScreenCaptureRequest, ScreenCaptureResponse
 
 logger = logging.getLogger("nova.control.screen")
 
 
-class ScreenCaptureProvider:
-    """Captures desktop screenshots and encodes them for protocol transmission."""
+class ScreenCaptureProvider(ScreenController):
+    """Captures desktop screenshots, window frames, and detects multi-monitor topology."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, dry_run: bool = False) -> None:
         self.hostname = socket.gethostname()
+        self.dry_run = dry_run
 
     def capture(self, request: ScreenCaptureRequest | None = None) -> ScreenCaptureResponse:
         """Capture the current desktop screen or return an informative diagnostic frame."""
@@ -143,3 +147,107 @@ class ScreenCaptureProvider:
         draw.text((cx - 130, cy + 10), "Interactive Window Monitor Ready", fill=(140, 160, 180))
 
         return img
+
+    def list_displays(self) -> list[dict[str, Any]]:
+        """Enumerate connected physical monitors and desktop virtual screen topology."""
+        if self.dry_run:
+            return [
+                {
+                    "monitor_id": 1,
+                    "name": "Display 1",
+                    "rect": {"left": 0, "top": 0, "right": 1920, "bottom": 1080},
+                    "width": 1920,
+                    "height": 1080,
+                    "is_primary": True,
+                }
+            ]
+
+        import win32api
+
+        monitors = []
+        try:
+            enum_mons = win32api.EnumDisplayMonitors()
+            for idx, (hmon, hdc, rect) in enumerate(enum_mons, start=1):
+                info = win32api.GetMonitorInfo(hmon)
+                r = info["Monitor"]
+                w = r[2] - r[0]
+                h = r[3] - r[1]
+                monitors.append({
+                    "monitor_id": idx,
+                    "name": info.get("Device", f"Display {idx}"),
+                    "rect": {"left": r[0], "top": r[1], "right": r[2], "bottom": r[3]},
+                    "width": w,
+                    "height": h,
+                    "is_primary": bool(info.get("Flags", 0) & 1),
+                })
+        except Exception as ex:
+            logger.warning("EnumDisplayMonitors failed: %s", ex)
+            # Fallback
+            monitors.append({
+                "monitor_id": 1,
+                "name": "Default Display",
+                "rect": {"left": 0, "top": 0, "right": 1920, "bottom": 1080},
+                "width": 1920,
+                "height": 1080,
+                "is_primary": True,
+            })
+        return monitors
+
+    def capture_window(self, hwnd: int, format: str = "png", quality: int = 80) -> ScreenCaptureResponse:
+        """Capture isolated bounding rectangle of a specific window."""
+        import win32gui
+
+        if not win32gui.IsWindow(hwnd):
+            raise WindowNotFoundError(f"Cannot capture invalid HWND {hwnd}", details={"hwnd": hwnd})
+
+        rect = win32gui.GetWindowRect(hwnd)
+        left, top, right, bottom = rect
+        width = max(1, right - left)
+        height = max(1, bottom - top)
+
+        img: Image.Image | None = None
+        try:
+            from PIL import ImageGrab
+            # Crop to window bbox
+            img = ImageGrab.grab(bbox=(left, top, right, bottom), all_screens=True)
+        except Exception as ex:
+            logger.warning("ImageGrab for window failed (%s). Generating window diagnostic frame.", ex)
+
+        if img is None:
+            img = Image.new("RGB", (width, height), color=(25, 30, 42))
+            draw = ImageDraw.Draw(img)
+            draw.rectangle([2, 2, width - 2, height - 2], outline=(0, 240, 255), width=2)
+            title = win32gui.GetWindowText(hwnd) or f"Window ({hwnd})"
+            draw.text((20, 20), f"WINDOW FRAME: {title}", fill=(255, 255, 255))
+            draw.text((20, 50), f"HWND: {hwnd} | Size: {width}x{height}", fill=(180, 200, 220))
+
+        buffer = io.BytesIO()
+        fmt = format.upper()
+        if fmt == "JPG":
+            fmt = "JPEG"
+        if fmt not in ("PNG", "JPEG"):
+            fmt = "PNG"
+
+        if fmt == "JPEG" and img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+
+        save_kwargs = {}
+        if fmt == "JPEG":
+            save_kwargs["quality"] = quality
+            save_kwargs["optimize"] = True
+
+        img.save(buffer, format=fmt, **save_kwargs)
+        image_bytes = buffer.getvalue()
+        b64_str = base64.b64encode(image_bytes).decode("ascii")
+
+        return ScreenCaptureResponse(
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            format=fmt.lower(),
+            width=img.width,
+            height=img.height,
+            image_base64=b64_str,
+            file_size_bytes=len(image_bytes),
+        )
+
+
+WindowsScreenController = ScreenCaptureProvider
