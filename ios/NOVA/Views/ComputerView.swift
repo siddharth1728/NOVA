@@ -200,7 +200,16 @@ public struct ComputerView: View {
     }
 
     private func metadataBar(_ data: ScreenCaptureResponse) -> some View {
-        HStack {
+        HStack(spacing: 8) {
+            Text("SCREEN PREVIEW")
+                .font(.system(size: 9, weight: .black))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color.blue.opacity(0.15))
+                .foregroundStyle(.blue)
+                .clipShape(Capsule())
+
+            Spacer()
             Label("\(data.width) × \(data.height)", systemImage: "aspectratio")
             Spacer()
             Label("\(data.fileSizeBytes / 1024) KB", systemImage: "doc")

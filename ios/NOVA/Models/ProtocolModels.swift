@@ -399,21 +399,25 @@ public struct WindowInfo: Codable, Sendable, Identifiable {
     public var id: Int { hwnd }
     public let hwnd: Int
     public let title: String
-    public let processId: Int
+    public let pid: Int
     public let processName: String
     public let bounds: WindowBounds
-    public let isVisible: Bool
+    public let visible: Bool
     public let isMinimized: Bool
     public let isMaximized: Bool
     public let isForeground: Bool
 
+    // Backwards-compatibility computed properties
+    public var processId: Int { pid }
+    public var isVisible: Bool { visible }
+
     enum CodingKeys: String, CodingKey {
         case hwnd
         case title
-        case processId = "process_id"
+        case pid
         case processName = "process_name"
         case bounds
-        case isVisible = "is_visible"
+        case visible
         case isMinimized = "is_minimized"
         case isMaximized = "is_maximized"
         case isForeground = "is_foreground"
@@ -447,17 +451,24 @@ public struct WindowBoundsRequest: Codable, Sendable {
 }
 
 public struct AppInfo: Codable, Sendable, Identifiable {
-    public var id: String { executablePath }
+    public var id: String { path.isEmpty ? executable : path }
     public let name: String
-    public let executablePath: String
+    public let executable: String
+    public let path: String
     public let publisher: String?
     public let isRunning: Bool
+    public let category: String?
+
+    // Backwards-compatibility computed property
+    public var executablePath: String { path.isEmpty ? executable : path }
 
     enum CodingKeys: String, CodingKey {
         case name
-        case executablePath = "executable_path"
+        case executable
+        case path
         case publisher
         case isRunning = "is_running"
+        case category
     }
 }
 
@@ -484,36 +495,57 @@ public struct AppLaunchRequest: Codable, Sendable {
 
 public struct AppLaunchResponse: Codable, Sendable {
     public let success: Bool
+    public let appName: String?
     public let pid: Int?
     public let hwnd: Int?
-    public let windowDetected: Bool
+    public let windowTitle: String?
+    public let windowDetected: Bool?
     public let message: String?
 
     enum CodingKeys: String, CodingKey {
         case success
+        case appName = "app_name"
         case pid
         case hwnd
+        case windowTitle = "window_title"
         case windowDetected = "window_detected"
         case message
     }
 }
 
+private let PROTECTED_PROCESS_NAMES: Set<String> = [
+    "system", "system idle process", "registry", "smss.exe", "csrss.exe",
+    "wininit.exe", "services.exe", "lsass.exe", "svchost.exe", "winlogon.exe",
+    "explorer.exe", "taskhostw.exe", "dwm.exe"
+]
+
 public struct ProcessInfo: Codable, Sendable, Identifiable {
     public var id: Int { pid }
     public let pid: Int
     public let name: String
+    public let exe: String?
     public let cpuPercent: Double
+    public let memoryPercent: Double?
     public let memoryMb: Double
     public let status: String
-    public let isProtected: Bool
+    public let parentPid: Int?
+    public let createdAt: String?
+
+    public var isProtected: Bool {
+        if pid <= 4 { return true }
+        return PROTECTED_PROCESS_NAMES.contains(name.lowercased())
+    }
 
     enum CodingKeys: String, CodingKey {
         case pid
         case name
+        case exe
         case cpuPercent = "cpu_percent"
+        case memoryPercent = "memory_percent"
         case memoryMb = "memory_mb"
         case status
-        case isProtected = "is_protected"
+        case parentPid = "parent_pid"
+        case createdAt = "created_at"
     }
 }
 
@@ -525,15 +557,16 @@ public struct ProcessStopRequest: Codable, Sendable {
 public struct ProcessStopResponse: Codable, Sendable {
     public let success: Bool
     public let pid: Int
-    public let processName: String
-    public let verifiedTerminated: Bool
+    public let name: String
     public let message: String?
+
+    public var processName: String { name }
+    public var verifiedTerminated: Bool { success }
 
     enum CodingKeys: String, CodingKey {
         case success
         case pid
-        case processName = "process_name"
-        case verifiedTerminated = "verified_terminated"
+        case name
         case message
     }
 }
@@ -641,4 +674,21 @@ public struct InputResponse: Codable, Sendable {
     public let success: Bool
     public let message: String?
 }
+
+public struct ClipboardContent: Codable, Sendable {
+    public let contentType: String
+    public let hasText: Bool
+    public let textLength: Int
+    public let hashSha256: String?
+    public let textPreview: String?
+
+    enum CodingKeys: String, CodingKey {
+        case contentType = "content_type"
+        case hasText = "has_text"
+        case textLength = "text_length"
+        case hashSha256 = "hash_sha256"
+        case textPreview = "text_preview"
+    }
+}
+
 

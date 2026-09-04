@@ -16,7 +16,15 @@ public enum ConnectionState: String, Sendable {
     case degraded = "DEGRADED"
     case reconnecting = "RECONNECTING"
     case failed = "FAILED"
+public enum ScreenState: String, Sendable {
+    case offline = "OFFLINE"
+    case loading = "LOADING"
+    case connected = "CONNECTED"
+    case stale = "STALE"
+    case error = "ERROR"
 }
+
+public typealias NOVAAppModel = NovaAppModel
 
 @MainActor
 public final class NovaAppModel: ObservableObject {
@@ -37,13 +45,15 @@ public final class NovaAppModel: ObservableObject {
     // Screen State
     @Published public var lastScreenshot: ScreenCaptureResponse? = nil
     @Published public var isCapturingScreen: Bool = false
+    @Published public var screenState: ScreenState = .offline
 
     // Real-Time Event Stream
     @Published public var recentEvents: [String] = []
     @Published public var isWebSocketConnected: Bool = false
 
-    // Authentication State
+    // Authentication & App Lifecycle State
     @Published public var isPaired: Bool = KeychainStore.shared.isPaired
+    @Published public var isInitialLaunchCheck: Bool = true
     @Published public var errorMessage: String? = nil
 
     private var pollTimer: Timer?
@@ -181,14 +191,58 @@ public final class NovaAppModel: ObservableObject {
 
     public func captureDesktopSnapshot(maxWidth: Int? = 1280) async {
         isCapturingScreen = true
+        screenState = .loading
         errorMessage = nil
         do {
             let resp = try await NovaClient.shared.captureScreen(maxWidth: maxWidth)
             self.lastScreenshot = resp
+            self.screenState = .connected
         } catch {
             self.errorMessage = error.localizedDescription
+            self.screenState = .error
         }
         isCapturingScreen = false
+    }
+
+    public func handleAppDidBecomeActive() {
+        self.isPaired = KeychainStore.shared.isPaired
+        guard isPaired else {
+            self.connectionState = .disconnected
+            self.isInitialLaunchCheck = false
+            return
+        }
+        Task {
+            await establishConnection()
+            self.isInitialLaunchCheck = false
+        }
+    }
+
+    public func handleAppDidEnterBackground() {
+        pollTimer?.invalidate()
+        pollTimer = nil
+        disconnectWebSocket()
+    }
+
+    public func userFriendlyError(from code: String?, fallback: String) -> String {
+        guard let c = code?.uppercased() else { return fallback }
+        switch c {
+        case "UNAUTHENTICATED", "AUTH_FAILED":
+            return "Your device session is no longer valid. Pair again."
+        case "REVOKED_DEVICE", "DEVICE_REVOKED":
+            return "This iPhone has been revoked by NOVA workstation."
+        case "NOT_FOUND", "TARGET_NOT_FOUND":
+            return "Target window or application not found on PC."
+        case "CAPABILITY_UNAVAILABLE":
+            return "That capability is not available on this PC."
+        case "PERMISSION_DENIED", "REMOTE_EXECUTION_DENIED":
+            return "That action was blocked by Windows security policy."
+        case "TIMEOUT", "COMPUTER_ACTION_TIMEOUT":
+            return "The PC did not respond in time."
+        case "PC_UNREACHABLE":
+            return "Your PC is currently offline."
+        default:
+            return fallback
+        }
     }
 
     public func emergencyLockWorkstation() async {

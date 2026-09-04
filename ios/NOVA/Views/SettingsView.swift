@@ -126,6 +126,46 @@ public struct SettingsView: View {
                     }
                 }
 
+                // About NOVA
+                Section("About NOVA") {
+                    HStack {
+                        Text("Application")
+                        Spacer()
+                        Text("NOVA for iOS")
+                            .foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Text("Client Version")
+                        Spacer()
+                        Text("0.4.0")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Text("Protocol Version")
+                        Spacer()
+                        Text(PROTOCOL_VERSION)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Text("Host Server Version")
+                        Spacer()
+                        Text(appModel.hostHealth?.serverVersion ?? "Offline")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                    if let osVer = appModel.systemStatus?.system.osVersion {
+                        HStack {
+                            Text("Workstation OS")
+                            Spacer()
+                            Text(osVer)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
                 // Security & Danger Zone
                 Section("Security Actions") {
                     Button("Unpair & Clear Credentials", role: .destructive) {
