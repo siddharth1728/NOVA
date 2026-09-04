@@ -8,55 +8,98 @@
 import SwiftUI
 
 public struct SettingsView: View {
+    @ObservedObject private var appModel = NovaAppModel.shared
     @State private var showPairingSheet = false
     @State private var hostUrl = KeychainStore.shared.hostBaseUrl
-    @State private var deviceId = KeychainStore.shared.deviceId
-    @State private var isPaired = KeychainStore.shared.isPaired
-    @State private var capabilities: CapabilitiesMatrix?
-    @State private var isLoadingCapabilities = false
+    @State private var isEditingHostUrl = false
 
     public init() {}
 
     public var body: some View {
         NavigationStack {
             Form {
+                // Connection State Section
+                Section("Connection Status") {
+                    HStack {
+                        Text("Lifecycle State")
+                        Spacer()
+                        Text(appModel.connectionState.rawValue)
+                            .font(.caption.bold())
+                            .foregroundStyle(connectionColor)
+                    }
+
+                    if let latency = appModel.latencyMs {
+                        HStack {
+                            Text("Roundtrip Latency")
+                            Spacer()
+                            Text("\(latency) ms")
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    if appModel.isPaired {
+                        Button("Reconnect Now") {
+                            Task { await appModel.establishConnection() }
+                        }
+                    }
+                }
+
                 // Device Trust & Pairing Section
                 Section("Device Trust & Identity") {
                     HStack {
                         Text("Device ID")
                         Spacer()
-                        Text(deviceId.prefix(12) + "...")
+                        Text(KeychainStore.shared.deviceId.prefix(12) + "...")
                             .font(.system(.caption, design: .monospaced))
                             .foregroundStyle(.secondary)
                     }
 
                     HStack {
-                        Text("Status")
+                        Text("Trust Status")
                         Spacer()
-                        Text(isPaired ? "Paired & Authorized" : "Unpaired")
+                        Text(appModel.isPaired ? "Paired & Authorized" : "Unpaired")
                             .font(.caption.bold())
-                            .foregroundStyle(isPaired ? .green : .red)
+                            .foregroundStyle(appModel.isPaired ? .green : .red)
                     }
 
-                    Button(isPaired ? "Re-Pair Device" : "Pair New Device") {
+                    Button(appModel.isPaired ? "Re-Pair Device" : "Pair New Device") {
                         showPairingSheet = true
                     }
                 }
 
                 // Workstation Endpoint Section
                 Section("Host Workstation") {
-                    HStack {
-                        Text("Host URL")
-                        Spacer()
-                        Text(hostUrl)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                    if isEditingHostUrl {
+                        HStack {
+                            TextField("http://192.168.1.100:8000", text: $hostUrl)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.never)
+                                .keyboardType(.URL)
+                            Button("Save") {
+                                KeychainStore.shared.hostBaseUrl = hostUrl
+                                isEditingHostUrl = false
+                                Task { await appModel.establishConnection() }
+                            }
+                            .font(.caption.bold())
+                        }
+                    } else {
+                        HStack {
+                            Text("Host URL")
+                            Spacer()
+                            Text(KeychainStore.shared.hostBaseUrl)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Button("Edit Host Endpoint") {
+                            isEditingHostUrl = true
+                        }
                     }
                 }
 
                 // Host Capabilities Section
-                Section("Host Capabilities Matrix") {
-                    if let caps = capabilities {
+                Section("Discovered Capabilities") {
+                    if let caps = appModel.capabilities {
                         ForEach(caps.capabilities) { cap in
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
@@ -76,46 +119,33 @@ public struct SettingsView: View {
                                     .clipShape(Capsule())
                             }
                         }
-                    } else if isLoadingCapabilities {
-                        ProgressView("Discovering Capabilities...")
                     } else {
-                        Button("Inspect Host Capabilities") {
-                            Task { await loadCapabilities() }
-                        }
+                        Text("Capabilities will be discovered upon connection.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
 
                 // Security & Danger Zone
                 Section("Security Actions") {
                     Button("Unpair & Clear Credentials", role: .destructive) {
-                        KeychainStore.shared.clearAll()
-                        isPaired = false
+                        appModel.unpairDevice()
                     }
                 }
             }
             .navigationTitle("Settings")
             .sheet(isPresented: $showPairingSheet) {
-                PairingView(isPresented: $showPairingSheet) {
-                    isPaired = KeychainStore.shared.isPaired
-                    Task { await loadCapabilities() }
-                }
-            }
-            .task {
-                if isPaired {
-                    await loadCapabilities()
-                }
+                PairingView(isPresented: $showPairingSheet)
             }
         }
     }
 
-    private func loadCapabilities() async {
-        isLoadingCapabilities = true
-        do {
-            let res = try await NovaClient.shared.fetchCapabilities()
-            self.capabilities = res
-        } catch {
-            print("Failed to load capabilities: \(error)")
+    private var connectionColor: Color {
+        switch appModel.connectionState {
+        case .connected: return .green
+        case .connecting, .authenticating, .reconnecting: return .blue
+        case .degraded: return .orange
+        case .disconnected, .failed: return .red
         }
-        isLoadingCapabilities = false
     }
 }

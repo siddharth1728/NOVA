@@ -19,6 +19,7 @@ from nova.control.system import SystemMetricsProvider
 from nova.host.auth import DeviceRegistry, TokenManager
 from nova.host.pairing import PairingManager
 from nova.host.router import HostRouter
+from nova.host.tasks import TaskController
 from nova.host.websocket import WebSocketHub
 from nova.protocol.models import WebSocketEvent
 
@@ -32,6 +33,7 @@ def create_host_app(
     token_manager: TokenManager | None = None,
     pairing_manager: PairingManager | None = None,
     websocket_hub: WebSocketHub | None = None,
+    task_controller: TaskController | None = None,
     system_metrics: SystemMetricsProvider | None = None,
     screen_capture: ScreenCaptureProvider | None = None,
     power_control: PowerControlProvider | None = None,
@@ -48,6 +50,7 @@ def create_host_app(
     )
     pair = pairing_manager or PairingManager(default_ttl_seconds=st.pairing_code_ttl_seconds)
     hub = websocket_hub or WebSocketHub()
+    tasks = task_controller or TaskController()
     metrics = system_metrics or SystemMetricsProvider(workspace_root=str(st.workspace_root))
     screen = screen_capture or ScreenCaptureProvider()
     power = power_control or PowerControlProvider()
@@ -60,6 +63,7 @@ def create_host_app(
         token_manager=tok,
         pairing_manager=pair,
         websocket_hub=hub,
+        task_controller=tasks,
         system_metrics=metrics,
         screen_capture=screen,
         power_control=power,
@@ -91,6 +95,7 @@ def create_host_app(
         app.state.device_registry = reg
         app.state.token_manager = tok
         app.state.websocket_hub = hub
+        app.state.task_controller = tasks
         yield
         task.cancel()
         try:
@@ -99,11 +104,14 @@ def create_host_app(
             pass
 
     routes = [
+        Route("/api/v1/health", router.handle_health, methods=["GET"]),
         Route("/api/v1/pair", router.handle_pair, methods=["POST"]),
         Route("/api/v1/status", router.handle_status, methods=["GET"]),
         Route("/api/v1/screen/capture", router.handle_screen_capture, methods=["POST"]),
         Route("/api/v1/capabilities", router.handle_capabilities, methods=["GET"]),
         Route("/api/v1/agent/query", router.handle_agent_query, methods=["POST"]),
+        Route("/api/v1/agent/tasks/{task_id}/cancel", router.handle_cancel_task, methods=["POST"]),
+        Route("/api/v1/agent/tasks/{task_id}", router.handle_get_task, methods=["GET"]),
         Route("/api/v1/emergency/lock", router.handle_emergency_lock, methods=["POST"]),
         Route("/api/v1/devices", router.handle_list_devices, methods=["GET"]),
         Route("/api/v1/devices/{device_id}/revoke", router.handle_revoke_device, methods=["POST"]),
@@ -129,7 +137,7 @@ def run_host_server(
     port: int = 8000,
     log_level: str = "info",
 ) -> None:
-    """Run the host ASGI server using uvicorn."""
+    """Run the host ASGI server using uvicorn with graceful lifecycle handling."""
     config = uvicorn.Config(
         app,
         host=host,

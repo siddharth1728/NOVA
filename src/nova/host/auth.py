@@ -116,6 +116,8 @@ class TokenManager:
         exp = now + delta
 
         payload = {
+            "iss": "nova-windows-host",
+            "aud": "nova-ios-client",
             "sub": device.device_id,
             "name": device.name,
             "role": device.role.value,
@@ -127,16 +129,27 @@ class TokenManager:
         return token, exp.isoformat()
 
     def verify_token(self, token: str) -> dict[str, Any]:
-        """Verify token signature and expiration.
+        """Verify token signature, expiration, issuer, and audience.
 
         Raises:
-            AuthenticationError: If token is expired or invalid.
+            AuthenticationError: If token is expired, tampered, or invalid.
         """
         try:
-            claims = jwt.decode(token, self.secret, algorithms=[self.algorithm])
+            claims = jwt.decode(
+                token,
+                self.secret,
+                algorithms=[self.algorithm],
+                audience="nova-ios-client",
+                issuer="nova-windows-host",
+                options={"require": ["exp", "iat", "sub"]},
+            )
             return claims
         except jwt.ExpiredSignatureError:
             raise AuthenticationError("Session token has expired. Please re-pair device.")
+        except jwt.InvalidAudienceError:
+            raise AuthenticationError("Invalid token audience.")
+        except jwt.InvalidIssuerError:
+            raise AuthenticationError("Invalid token issuer.")
         except Exception as ex:
             raise AuthenticationError(f"Invalid authentication token: {ex}")
 

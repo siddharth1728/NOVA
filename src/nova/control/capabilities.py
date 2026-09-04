@@ -50,6 +50,12 @@ class CapabilityRegistry:
                 description="Immediate remote workstation lock via Win32 LockWorkStation.",
             ),
             CapabilityInfo(
+                name="task_cancellation",
+                available=True,
+                risk_level="CONTROL_SYSTEM",
+                description="Direct abort of in-flight agent tasks via host task controller.",
+            ),
+            CapabilityInfo(
                 name="arbitrary_shell_execution",
                 available=False,  # Strictly blocked remotely per NOVA security policy
                 risk_level="BLOCKED_DANGEROUS",

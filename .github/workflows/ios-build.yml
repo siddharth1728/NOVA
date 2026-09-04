@@ -1,0 +1,30 @@
+name: iOS Build Verification
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-build.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'ios/**'
+
+jobs:
+  build-ios:
+    name: Build Swift Package (macOS Runner)
+    runs-on: macos-14
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 16
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer || true
+          swift --version
+
+      - name: Build iOS Swift Package
+        working-directory: ios
+        run: |
+          swift build -v

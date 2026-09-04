@@ -2,6 +2,8 @@
 
 from nova.protocol.errors import ProtocolErrorCode, format_error_payload
 from nova.protocol.models import (
+    PROTOCOL_VERSION,
+    SERVER_VERSION,
     AgentStatus,
     CapabilitiesMatrix,
     CapabilityInfo,
@@ -10,6 +12,7 @@ from nova.protocol.models import (
     DeviceStatus,
     EmergencyActionRequest,
     EmergencyActionResponse,
+    HealthResponse,
     PairingRequest,
     PairingResponse,
     RemoteQueryRequest,
@@ -18,10 +21,16 @@ from nova.protocol.models import (
     ScreenCaptureResponse,
     SystemMetrics,
     SystemStatus,
+    TaskCancelRequest,
+    TaskCancelResponse,
+    TaskRecord,
+    TaskStatus,
     WebSocketEvent,
 )
 
 __all__ = [
+    "PROTOCOL_VERSION",
+    "SERVER_VERSION",
     "AgentStatus",
     "CapabilitiesMatrix",
     "CapabilityInfo",
@@ -30,6 +39,7 @@ __all__ = [
     "DeviceStatus",
     "EmergencyActionRequest",
     "EmergencyActionResponse",
+    "HealthResponse",
     "PairingRequest",
     "PairingResponse",
     "ProtocolErrorCode",
@@ -39,6 +49,10 @@ __all__ = [
     "ScreenCaptureResponse",
     "SystemMetrics",
     "SystemStatus",
+    "TaskCancelRequest",
+    "TaskCancelResponse",
+    "TaskRecord",
+    "TaskStatus",
     "WebSocketEvent",
     "format_error_payload",
 ]

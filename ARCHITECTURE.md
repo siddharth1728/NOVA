@@ -137,6 +137,14 @@ Custom tools are registered via `@nova_tool` decorator with automated schema inf
 - **Workstation Lock Provider**: Directly invokes Win32 `LockWorkStation` with dry-run support.
 - **Capability Registry**: Discovers and exposes available host capabilities with risk classification; strictly disables remote shell execution.
 
+### 2.12 Remote Task Controller & Connection State Machine (`nova.host.tasks`, `ios/NOVA`)
+- **Task Controller**: Out-of-band task lifecycle coordinator tracking `QUEUED` -> `PLANNING` -> `EXECUTING` -> `VERIFYING` -> `COMPLETED` / `FAILED` / `CANCELLED`.
+- **Direct Task Cancellation**: Direct task aborts (`POST /api/v1/agent/tasks/{id}/cancel`) cancel active asyncio execution handles without LLM interpretation.
+- **Request Idempotency**: Host caches client request IDs to detect and safely deduplicate repeated mobile submissions.
+- **Connection Lifecycle State Machine**: Full mobile connection handling (`DISCONNECTED`, `CONNECTING`, `AUTHENTICATING`, `CONNECTED`, `DEGRADED`, `RECONNECTING`, `FAILED`) with exponential backoff reconnect.
+- **Health Verification**: `GET /api/v1/health` providing host state, agent state, versioning, uptime, and active task count.
+- **Xcode & SPM Build Architecture**: Clean SPM (`Package.swift`) + XcodeGen (`project.yml`) + `Info.plist` with local network entitlements + GitHub Actions CI workflow on `macos-14`.
+
 ---
 
 ## 3. Skills and Subagent Extensibility

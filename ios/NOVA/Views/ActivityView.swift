@@ -2,14 +2,13 @@
 //  ActivityView.swift
 //  NOVA iOS Control Center
 //
-//  Streaming event stream, audit trail, and host lifecycle activity monitor.
+//  Streaming event log, audit trail, and host lifecycle activity monitor.
 //
 
 import SwiftUI
 
 public struct ActivityView: View {
-    @ObservedObject private var ws = WebSocketManager.shared
-    @State private var isAutoScroll = true
+    @ObservedObject private var appModel = NovaAppModel.shared
 
     public init() {}
 
@@ -19,11 +18,11 @@ public struct ActivityView: View {
                 // Connection Status Header
                 wsStatusHeader
 
-                if ws.recentEvents.isEmpty {
+                if appModel.recentEvents.isEmpty {
                     emptyActivityState
                 } else {
                     List {
-                        ForEach(ws.recentEvents, id: \.self) { event in
+                        ForEach(appModel.recentEvents, id: \.self) { event in
                             Text(event)
                                 .font(.system(.caption, design: .monospaced))
                                 .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
@@ -36,13 +35,8 @@ public struct ActivityView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Clear") {
-                        ws.recentEvents.removeAll()
+                        appModel.recentEvents.removeAll()
                     }
-                }
-            }
-            .onAppear {
-                if !ws.isConnected {
-                    ws.connect()
                 }
             }
         }
@@ -51,13 +45,13 @@ public struct ActivityView: View {
     private var wsStatusHeader: some View {
         HStack {
             Circle()
-                .fill(ws.isConnected ? Color.green : Color.orange)
+                .fill(appModel.isWebSocketConnected ? Color.green : Color.orange)
                 .frame(width: 8, height: 8)
-            Text(ws.isConnected ? "WebSocket Stream Connected" : "Connecting to Host Stream...")
+            Text(appModel.isWebSocketConnected ? "WebSocket Stream Connected" : "Connecting to Host Stream...")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
-            Text("\(ws.recentEvents.count) Events")
+            Text("\(appModel.recentEvents.count) Events")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
@@ -74,7 +68,7 @@ public struct ActivityView: View {
                 .foregroundStyle(.secondary)
             Text("No Streaming Events")
                 .font(.headline)
-            Text("Streaming telemetry ticks, agent plan events, and audit logs will appear here in real time.")
+            Text("Real-time telemetry ticks, agent plan events, task cancellations, and audit logs stream here via WebSockets.")
                 .font(.caption)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)

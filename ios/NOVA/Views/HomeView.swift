@@ -2,16 +2,13 @@
 //  HomeView.swift
 //  NOVA iOS Control Center
 //
-//  Dashboard overview showing real-time Windows PC telemetry, agent health, and quick actions.
+//  Dashboard overview showing real-time Windows PC telemetry, latency, agent health, and quick actions.
 //
 
 import SwiftUI
 
 public struct HomeView: View {
-    @State private var status: SystemStatus?
-    @State private var isLoading = false
-    @State private var errorMessage: String?
-    @ObservedObject private var ws = WebSocketManager.shared
+    @ObservedObject private var appModel = NovaAppModel.shared
 
     public init() {}
 
@@ -19,23 +16,23 @@ public struct HomeView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
-                    // Host Connection Card
+                    // Host Connection Card with Latency
                     connectionHeader
 
-                    if let err = errorMessage {
+                    if let err = appModel.errorMessage {
                         errorBanner(err)
                     }
 
-                    if let s = status {
+                    if let s = appModel.systemStatus {
                         // Hardware Resource Metrics
                         telemetryGauges(s.system)
 
                         // Agent Runtime Status
                         agentCard(s.agent)
 
-                        // Quick Actions
+                        // Quick Actions (Verified against capabilities)
                         quickActionsGrid
-                    } else if isLoading {
+                    } else if appModel.connectionState == .connecting || appModel.connectionState == .authenticating {
                         ProgressView("Connecting to Windows Host...")
                             .padding(.top, 40)
                     } else {
@@ -46,10 +43,12 @@ public struct HomeView: View {
             }
             .navigationTitle("NOVA Control Center")
             .refreshable {
-                await refreshData()
+                await appModel.establishConnection()
             }
             .task {
-                await refreshData()
+                if appModel.connectionState == .disconnected {
+                    appModel.startConnection()
+                }
             }
         }
     }
@@ -57,29 +56,58 @@ public struct HomeView: View {
     private var connectionHeader: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text(status?.system.hostname ?? "Windows PC")
+                Text(appModel.systemStatus?.system.hostname ?? appModel.hostHealth?.hostName ?? "Windows Workstation")
                     .font(.title2.bold())
-                Text(status?.system.osVersion ?? "Host Disconnected")
+                Text(appModel.systemStatus?.system.osVersion ?? "Host Disconnected")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(status != nil ? Color.green : Color.red)
-                    .frame(width: 10, height: 10)
-                Text(status != nil ? "Online" : "Offline")
-                    .font(.subheadline.bold())
-                    .foregroundStyle(status != nil ? .green : .red)
+            VStack(alignment: .trailing, spacing: 4) {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(stateColor)
+                        .frame(width: 10, height: 10)
+                    Text(stateTitle)
+                        .font(.subheadline.bold())
+                        .foregroundStyle(stateColor)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(Capsule())
+
+                if let latency = appModel.latencyMs {
+                    Text("\(latency) ms")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.secondary)
+                }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Color(.secondarySystemBackground))
-            .clipShape(Capsule())
         }
         .padding()
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    private var stateColor: Color {
+        switch appModel.connectionState {
+        case .connected: return .green
+        case .connecting, .authenticating, .reconnecting: return .blue
+        case .degraded: return .orange
+        case .disconnected, .failed: return .red
+        }
+    }
+
+    private var stateTitle: String {
+        switch appModel.connectionState {
+        case .connected: return "Online"
+        case .connecting: return "Connecting"
+        case .authenticating: return "Authenticating"
+        case .reconnecting: return "Reconnecting"
+        case .degraded: return "Degraded"
+        case .disconnected: return "Offline"
+        case .failed: return "Failed"
+        }
     }
 
     private func telemetryGauges(_ metrics: SystemMetrics) -> some View {
@@ -159,31 +187,52 @@ public struct HomeView: View {
                 .font(.headline)
 
             HStack(spacing: 12) {
-                Button {
-                    Task { await lockWorkstationAction() }
-                } label: {
-                    Label("Lock PC", systemImage: "lock.fill")
-                        .font(.subheadline.bold())
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.red.opacity(0.15))
-                        .foregroundStyle(.red)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                if hasCapability("workstation_lock") {
+                    Button {
+                        Task { await appModel.emergencyLockWorkstation() }
+                    } label: {
+                        Label("Lock PC", systemImage: "lock.fill")
+                            .font(.subheadline.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.red.opacity(0.15))
+                            .foregroundStyle(.red)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                }
+
+                if hasCapability("desktop_screen_capture") {
+                    Button {
+                        Task { await appModel.captureDesktopSnapshot() }
+                    } label: {
+                        Label("Snapshot", systemImage: "camera.viewfinder")
+                            .font(.subheadline.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.blue.opacity(0.15))
+                            .foregroundStyle(.blue)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
                 }
 
                 Button {
-                    Task { await refreshData() }
+                    Task { await appModel.establishConnection() }
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                         .font(.subheadline.bold())
                         .frame(maxWidth: .infinity)
                         .padding()
-                        .background(Color.blue.opacity(0.15))
-                        .foregroundStyle(.blue)
+                        .background(Color(.secondarySystemBackground))
+                        .foregroundStyle(.primary)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
             }
         }
+    }
+
+    private func hasCapability(_ name: String) -> Bool {
+        guard let caps = appModel.capabilities else { return true }
+        return caps.capabilities.contains(where: { $0.name == name && $0.available })
     }
 
     private var unpairedOrOfflineCard: some View {
@@ -191,14 +240,14 @@ public struct HomeView: View {
             Image(systemName: "desktopcomputer.trianglebadge.exclamationmark")
                 .font(.system(size: 40))
                 .foregroundStyle(.secondary)
-            Text("Workstation Unreachable")
+            Text("Workstation Disconnected")
                 .font(.headline)
-            Text("Ensure NOVA Windows Host is running ('nova host start') and your device is paired in Settings.")
+            Text("Ensure NOVA Windows Host is running ('nova host start') and your iPhone is paired.")
                 .font(.caption)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
-            Button("Retry Connection") {
-                Task { await refreshData() }
+            Button("Reconnect Now") {
+                Task { await appModel.establishConnection() }
             }
             .buttonStyle(.borderedProminent)
             .padding(.top, 4)
@@ -221,26 +270,5 @@ public struct HomeView: View {
         .padding()
         .background(Color.red.opacity(0.1))
         .clipShape(RoundedRectangle(cornerRadius: 10))
-    }
-
-    private func refreshData() async {
-        isLoading = true
-        errorMessage = nil
-        do {
-            let res = try await NovaClient.shared.fetchStatus()
-            self.status = res
-        } catch {
-            self.errorMessage = error.localizedDescription
-            self.status = nil
-        }
-        isLoading = false
-    }
-
-    private func lockWorkstationAction() async {
-        do {
-            _ = try await NovaClient.shared.lockWorkstation(dryRun: false)
-        } catch {
-            self.errorMessage = "Lock failed: \(error.localizedDescription)"
-        }
     }
 }

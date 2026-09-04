@@ -8,11 +8,11 @@
 import SwiftUI
 
 public struct PairingView: View {
+    @ObservedObject private var appModel = NovaAppModel.shared
     @Binding public var isPresented: Bool
     @State private var hostUrl: String = KeychainStore.shared.hostBaseUrl
     @State private var pairingCode: String = ""
     @State private var isPairing: Bool = false
-    @State private var errorMessage: String?
     public var onPaired: (() -> Void)?
 
     public init(isPresented: Binding<Bool>, onPaired: (() -> Void)? = nil) {
@@ -28,7 +28,7 @@ public struct PairingView: View {
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                         .keyboardType(.URL)
-                    Text("The local IP and port where your Windows PC is running 'nova host start'.")
+                    Text("The local IP and port where your Windows PC is running 'nova host start' (e.g., http://192.168.1.50:8000 or Tailscale IP).")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -43,12 +43,12 @@ public struct PairingView: View {
                                 pairingCode = String(newValue.prefix(6))
                             }
                         }
-                    Text("Run 'nova host pair-code' on your Windows PC to generate an ephemeral PIN.")
+                    Text("Run 'nova host pair-code' on your Windows PC to generate an ephemeral 5-minute PIN.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
-                if let err = errorMessage {
+                if let err = appModel.errorMessage {
                     Section {
                         Text(err)
                             .font(.caption)
@@ -90,19 +90,15 @@ public struct PairingView: View {
 
     private func performPairing() async {
         isPairing = true
-        errorMessage = nil
-        do {
-            let res = try await NovaClient.shared.pair(
-                hostUrl: hostUrl.trimmingCharacters(in: .whitespaces),
-                pairingCode: pairingCode.trimmingCharacters(in: .whitespaces),
-                deviceName: UIDevice.current.name
-            )
-            print("Successfully paired with host: \(res.hostName)")
+        let success = await appModel.pairDevice(
+            hostUrl: hostUrl.trimmingCharacters(in: .whitespaces),
+            pinCode: pairingCode.trimmingCharacters(in: .whitespaces),
+            deviceName: UIDevice.current.name
+        )
+        isPairing = false
+        if success {
             onPaired?()
             isPresented = false
-        } catch {
-            errorMessage = error.localizedDescription
         }
-        isPairing = false
     }
 }

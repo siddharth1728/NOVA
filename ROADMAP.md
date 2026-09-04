@@ -47,17 +47,26 @@ NOVA is evolving systematically through disciplined phases. Each phase expands c
 
 ---
 
-## Phase 04: Specialized Subagent Activation & Delegation (NEXT)
-- [ ] Activation of static subagents via Antigravity `SubagentConfig`.
-- [ ] Planner Subagent: Autonomous goal decomposition.
-- [ ] Researcher Subagent: Document synthesis and web research.
-- [ ] Coder Subagent: Automated implementation and refactoring.
-- [ ] Verifier Subagent: Automated test execution and post-condition checks.
+## Phase 04: Real iOS Productization & Host Hardening (COMPLETED)
+- [x] Service health endpoint (`GET /api/v1/health`) exposing operational state, versioning, and active tasks.
+- [x] Request idempotency cache deduplicating repeated mobile submissions.
+- [x] Direct task cancellation controller (`POST /api/v1/agent/tasks/{id}/cancel`) bypassing LLM reasoning.
+- [x] Hardened JWT authentication validating issuer (`nova-windows-host`), audience (`nova-ios-client`), and device binding.
+- [x] Connection lifecycle state machine (`NovaAppModel`) with automatic exponential backoff reconnect.
+- [x] Dynamic roundtrip latency tracking and live hardware telemetry gauges on iPhone.
+- [x] XcodeGen (`project.yml`), Swift Package (`Package.swift`), `Info.plist` with local network entitlements, and asset catalogs.
+- [x] GitHub Actions CI workflow (`.github/workflows/ios-build.yml`) for automated macOS runner build verification.
+- [x] Comprehensive mobile and Windows deployment documentation.
+- [x] 102 automated tests passing with 100% success rate.
 
 ---
 
-## Phase 04: Structured Browser Automation & Model Context Protocol (MCP)
-- [ ] Antigravity browser automation integration for web workflows.
+## Phase 05: Interactive Computer & Desktop Control (NEXT)
+- [ ] Direct mouse control (cursor move, click, double click, right click, scroll).
+- [ ] Keyboard input simulation (type text, hotkeys, key combinations).
+- [ ] Active window inspection and focus management.
+- [ ] Low-latency visual streaming / delta compression for interactive desktop view.
+- [ ] Safety guardrails and emergency hardware-interrupt release.
 - [ ] Integration of standard MCP servers (`McpStdioServer`, `McpStreamableHttpServer`).
 - [ ] MCP tool discovery, risk classification, and policy enforcement.
 

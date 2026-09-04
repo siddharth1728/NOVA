@@ -7,19 +7,20 @@ NOVA is a local-first personal AI operating layer designed to safely understand 
 
 ---
 
-## Current Status (v0.3.0)
+## Current Status (v0.4.0)
 
-Phase 03 transforms NOVA into a **distributed personal AI computing system**, pairing a native **iOS Control Center** running on iPhone with an authoritative **Windows NOVA Host** running on the user's PC.
+Phase 04 establishes **real iOS productization, Windows host hardening, and end-to-end mobile connection resilience**:
 
 ### Core Capabilities:
-- **Distributed Host-Client Architecture**: Windows PC remains authoritative execution host; iPhone acts as thin observation, query, and emergency control surface.
-- **NOVA Remote Protocol v1**: Clean typed protocol schemas (`models.py`) supporting HTTP REST and real-time WebSockets (`/ws/v1/events`).
-- **Device Pairing & Session Trust**: Ephemeral 6-digit PIN onboarding (`nova host pair-code`), persistent device trust registry (`.nova/devices.json`), HMAC-SHA256 JWT bearer tokens, and immediate device revocation (`nova host revoke`).
-- **Windows Control Layer**: Live hardware telemetry (`psutil`), desktop screen capture (Win32 GDI / Pillow) with headless/locked safe fallback, and remote workstation lock (`LockWorkStation`).
-- **Remote Agent Goal Dispatch**: Dispatches natural language tasks from mobile to `NovaRuntime` with empirical verification and append-only audit logging.
-- **Strict Remote Security**: High-risk arbitrary shell execution (`run_command`, PowerShell) is strictly blocked over remote protocol.
-- **Native iOS 18 Application (`ios/NOVA/`)**: Pure Swift 6 / SwiftUI application with 5-tab interface: Dashboard Gauges, Agent Query Dispatch, Desktop Screen Viewer, Live Activity Feed, and Device Settings.
-- **Transactional Workspace Operations**: Full Phase 02 capability preserved (multi-step planning, atomic file operations, LIFO rollback).
+- **Health & Readiness Endpoint**: `GET /api/v1/health` providing host state, agent state, versioning, uptime, and active task count.
+- **Request Idempotency**: Host caches client request IDs to detect and safely deduplicate repeated mobile submissions.
+- **Task Controller & Direct Cancellation**: Out-of-band task lifecycle coordinator supporting direct task aborts (`POST /api/v1/agent/tasks/{id}/cancel`) without LLM interpretation.
+- **Hardened Device Authentication**: HMAC-SHA256 JWT validation with strict issuer (`nova-windows-host`), audience (`nova-ios-client`), device binding, and atomic Keychain storage.
+- **Connection Lifecycle State Machine**: Full mobile state handling (`DISCONNECTED`, `CONNECTING`, `AUTHENTICATING`, `CONNECTED`, `DEGRADED`, `RECONNECTING`, `FAILED`) with exponential backoff reconnect.
+- **Xcode & SPM Build Architecture**: Clean SPM (`Package.swift`) + XcodeGen (`project.yml`) + `Info.plist` with local network entitlements + GitHub Actions CI workflow on `macos-14`.
+- **Live Latency & Gauges**: Dynamic roundtrip latency tracking and hardware resource gauges on iPhone Home screen.
+- **Comprehensive Documentation**: Complete deployment guides for iOS, networking, pairing, Windows background services, and connection lifecycle.
+- **Automated Test Suite**: 102 unit and integration tests passing with 100% success.
 
 ---
 

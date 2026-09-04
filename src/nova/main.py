@@ -289,22 +289,40 @@ app.add_typer(host_app, name="host")
 
 @host_app.command(name="start")
 def host_start_command(
-    bind: Annotated[str, typer.Option("--host", "-h", help="Network host/interface to bind")] = "127.0.0.1",
+    bind: Annotated[str, typer.Option("--host", "-h", help="Network host/interface to bind (use 0.0.0.0 for LAN)")] = "0.0.0.0",
     port: Annotated[int, typer.Option("--port", "-p", help="TCP port to listen on")] = 8000,
     log_level: Annotated[str, typer.Option("--log-level", "-l", help="Server log level")] = "info",
 ) -> None:
     """Starts the NOVA Windows Host ASGI service for mobile and remote control."""
+    import socket
     from nova.host.server import create_host_app, run_host_server
 
     settings = get_settings()
+
+    # Discover local LAN IPs
+    lan_ips = []
+    try:
+        hostname = socket.gethostname()
+        for addr_info in socket.getaddrinfo(hostname, None):
+            ip = addr_info[4][0]
+            if "." in ip and not ip.startswith("127."):
+                if ip not in lan_ips:
+                    lan_ips.append(ip)
+    except Exception:
+        pass
+
+    lan_endpoints = "\n".join([f"  [cyan]• http://{ip}:{port}[/cyan]" for ip in lan_ips]) if lan_ips else "  [yellow]None detected[/yellow]"
+
     console.print(
         Panel(
-            f"[bold cyan]NOVA Windows Host Service[/bold cyan]\n"
+            f"[bold cyan]NOVA Windows Host Service (v0.4.0)[/bold cyan]\n"
             f"[white]Binding to:[/white] http://{bind}:{port}\n"
-            f"[white]WebSocket:[/white] ws://{bind}:{port}/ws/v1/events\n"
-            f"[white]Workspace:[/white] {settings.workspace_root}\n"
-            f"[white]Device Registry:[/white] {settings.devices_file}\n"
-            f"[green]Ready for mobile device connections.[/green]",
+            f"[white]Local LAN Endpoints for iPhone:[/white]\n{lan_endpoints}\n\n"
+            f"[white]WebSocket Stream:[/white] ws://{bind}:{port}/ws/v1/events\n"
+            f"[white]Workspace Root:[/white] {settings.workspace_root}\n"
+            f"[white]Device Registry:[/white] {settings.devices_file}\n\n"
+            f"[dim]Tip: If connecting over Wi-Fi, ensure Windows Defender Firewall allows inbound TCP {port}.[/dim]\n"
+            f"[green]Ready for incoming mobile device connections.[/green]",
             title="[bold green]NOVA Host Online[/bold green]",
             border_style="green",
         )

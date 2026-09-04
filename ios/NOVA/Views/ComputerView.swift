@@ -2,16 +2,14 @@
 //  ComputerView.swift
 //  NOVA iOS Control Center
 //
-//  Real-time desktop screen capture, display inspection, and workstation lock control.
+//  Desktop screen capture inspection, frame metadata, and emergency workstation lock.
 //
 
 import SwiftUI
 
 public struct ComputerView: View {
-    @State private var screenData: ScreenCaptureResponse?
+    @ObservedObject private var appModel = NovaAppModel.shared
     @State private var uiImage: UIImage?
-    @State private var isCapturing = false
-    @State private var errorMessage: String?
     @State private var showLockConfirmation = false
     @State private var isLocking = false
 
@@ -25,15 +23,15 @@ public struct ComputerView: View {
                     screenCanvas
 
                     // Screen Metadata Details
-                    if let meta = screenData {
+                    if let meta = appModel.lastScreenshot {
                         metadataBar(meta)
                     }
 
-                    if let err = errorMessage {
+                    if let err = appModel.errorMessage {
                         errorBanner(err)
                     }
 
-                    // Workstation Remote Actions
+                    // Workstation Actions
                     controlsSection
                 }
                 .padding()
@@ -44,17 +42,21 @@ public struct ComputerView: View {
                     Button {
                         Task { await captureScreen() }
                     } label: {
-                        if isCapturing {
+                        if appModel.isCapturingScreen {
                             ProgressView()
                         } else {
                             Image(systemName: "arrow.clockwise")
                         }
                     }
-                    .disabled(isCapturing)
+                    .disabled(appModel.isCapturingScreen)
                 }
             }
             .task {
-                await captureScreen()
+                if appModel.lastScreenshot == nil {
+                    await captureScreen()
+                } else if let b64 = appModel.lastScreenshot?.imageBase64, let data = Data(base64Encoded: b64) {
+                    self.uiImage = UIImage(data: data)
+                }
             }
         }
         .alert("Lock Windows Workstation?", isPresented: $showLockConfirmation) {
@@ -63,7 +65,7 @@ public struct ComputerView: View {
                 Task { await executeLock() }
             }
         } message: {
-            Text("This will invoke Win32 LockWorkStation on your PC immediately, locking the active Windows session.")
+            Text("This will invoke Win32 LockWorkStation on your PC immediately, securing the active Windows session.")
         }
     }
 
@@ -79,7 +81,7 @@ public struct ComputerView: View {
                     .scaledToFit()
                     .clipShape(RoundedRectangle(cornerRadius: 14))
                     .padding(4)
-            } else if isCapturing {
+            } else if appModel.isCapturingScreen {
                 VStack(spacing: 8) {
                     ProgressView()
                         .tint(.white)
@@ -131,7 +133,7 @@ public struct ComputerView: View {
                     .foregroundStyle(.white)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
             }
-            .disabled(isCapturing)
+            .disabled(appModel.isCapturingScreen)
 
             Button {
                 showLockConfirmation = true
@@ -163,27 +165,15 @@ public struct ComputerView: View {
     }
 
     private func captureScreen() async {
-        isCapturing = true
-        errorMessage = nil
-        do {
-            let resp = try await NovaClient.shared.captureScreen(maxWidth: 1280)
-            self.screenData = resp
-            if let decodedData = Data(base64Encoded: resp.imageBase64) {
-                self.uiImage = UIImage(data: decodedData)
-            }
-        } catch {
-            self.errorMessage = error.localizedDescription
+        await appModel.captureDesktopSnapshot(maxWidth: 1280)
+        if let b64 = appModel.lastScreenshot?.imageBase64, let data = Data(base64Encoded: b64) {
+            self.uiImage = UIImage(data: data)
         }
-        isCapturing = false
     }
 
     private func executeLock() async {
         isLocking = true
-        do {
-            _ = try await NovaClient.shared.lockWorkstation(dryRun: false)
-        } catch {
-            self.errorMessage = "Lock failed: \(error.localizedDescription)"
-        }
+        await appModel.emergencyLockWorkstation()
         isLocking = false
     }
 }

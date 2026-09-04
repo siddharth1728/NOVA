@@ -60,6 +60,13 @@ In Phase 02, NOVA introduces safe, reversible filesystem operations:
    - Arbitrary command execution (`run_command`, PowerShell, `cmd.exe`) is **unconditionally prohibited over the remote protocol**.
    - Any remote query attempting to invoke shell commands is immediately rejected with HTTP 403 `REMOTE_EXECUTION_DENIED`.
    - Workstation lock (`LockWorkStation`) requires authenticated device session and supports dry-run validation.
+4. **Token Issuer, Audience & Device Binding**:
+   - Every issued JWT contains `iss: "nova-windows-host"`, `aud: "nova-ios-client"`, and `sub: <device_id>`.
+   - Decoding strictly validates signature, issuer, audience, and expiration; tampered or expired tokens fail immediately.
+   - iOS client persists tokens and device IDs strictly in the iOS Keychain (`kSecClassGenericPassword` with `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`); zero credentials or secrets are stored in `UserDefaults`.
+5. **Out-of-Band Task Cancellation & Idempotency**:
+   - Cancellation requests (`POST /api/v1/agent/tasks/{id}/cancel`) route directly to the host TaskController, terminating asyncio execution handles without LLM interpretation.
+   - Client request IDs (`request_id`) prevent accidental duplicate task dispatches over unstable mobile networks.
 
 
 ---

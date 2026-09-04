@@ -7,6 +7,9 @@
 
 import Foundation
 
+public let PROTOCOL_VERSION = "1.0.0"
+public let SERVER_VERSION = "0.4.0"
+
 public enum DeviceRole: String, Codable, Sendable {
     case controller = "CONTROLLER"
     case observer = "OBSERVER"
@@ -19,17 +22,31 @@ public enum DeviceStatus: String, Codable, Sendable {
     case revoked = "REVOKED"
 }
 
+public enum TaskStatus: String, Codable, Sendable {
+    case queued = "QUEUED"
+    case planning = "PLANNING"
+    case waitingForApproval = "WAITING_FOR_APPROVAL"
+    case executing = "EXECUTING"
+    case verifying = "VERIFYING"
+    case completed = "COMPLETED"
+    case failed = "FAILED"
+    case cancelled = "CANCELLED"
+    case disconnected = "DISCONNECTED"
+}
+
 public struct PairingRequest: Codable, Sendable {
     public let pairingCode: String
     public let deviceId: String
     public let deviceName: String
     public let platform: String
+    public let clientVersion: String
 
-    public init(pairingCode: String, deviceId: String, deviceName: String, platform: String = "iOS") {
+    public init(pairingCode: String, deviceId: String, deviceName: String, platform: String = "iOS", clientVersion: String = "0.4.0") {
         self.pairingCode = pairingCode
         self.deviceId = deviceId
         self.deviceName = deviceName
         self.platform = platform
+        self.clientVersion = clientVersion
     }
 
     enum CodingKeys: String, CodingKey {
@@ -37,6 +54,7 @@ public struct PairingRequest: Codable, Sendable {
         case deviceId = "device_id"
         case deviceName = "device_name"
         case platform
+        case clientVersion = "client_version"
     }
 }
 
@@ -45,6 +63,7 @@ public struct PairingResponse: Codable, Sendable {
     public let deviceId: String
     public let hostName: String
     public let serverVersion: String
+    public let protocolVersion: String
     public let expiresAt: String
 
     enum CodingKeys: String, CodingKey {
@@ -52,7 +71,30 @@ public struct PairingResponse: Codable, Sendable {
         case deviceId = "device_id"
         case hostName = "host_name"
         case serverVersion = "server_version"
+        case protocolVersion = "protocol_version"
         case expiresAt = "expires_at"
+    }
+}
+
+public struct HealthResponse: Codable, Sendable {
+    public let status: String
+    public let hostName: String
+    public let serverVersion: String
+    public let protocolVersion: String
+    public let uptimeSeconds: Double
+    public let agentState: String
+    public let activeTasksCount: Int
+    public let timestamp: String
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case hostName = "host_name"
+        case serverVersion = "server_version"
+        case protocolVersion = "protocol_version"
+        case uptimeSeconds = "uptime_seconds"
+        case agentState = "agent_state"
+        case activeTasksCount = "active_tasks_count"
+        case timestamp
     }
 }
 
@@ -102,8 +144,16 @@ public struct AgentStatus: Codable, Sendable {
 
 public struct SystemStatus: Codable, Sendable {
     public let timestamp: String
+    public let protocolVersion: String
     public let system: SystemMetrics
     public let agent: AgentStatus
+
+    enum CodingKeys: String, CodingKey {
+        case timestamp
+        case protocolVersion = "protocol_version"
+        case system
+        case agent
+    }
 }
 
 public struct ScreenCaptureRequest: Codable, Sendable {
@@ -148,7 +198,7 @@ public struct ScreenCaptureResponse: Codable, Sendable {
 public struct CapabilityInfo: Codable, Sendable, Identifiable {
     public var id: String { name }
     public let name: String
-    public let available: bool
+    public let available: Bool
     public let riskLevel: String
     public let description: String
 
@@ -162,11 +212,13 @@ public struct CapabilityInfo: Codable, Sendable, Identifiable {
 
 public struct CapabilitiesMatrix: Codable, Sendable {
     public let version: String
+    public let protocolVersion: String
     public let hostPlatform: String
     public let capabilities: [CapabilityInfo]
 
     enum CodingKeys: String, CodingKey {
         case version
+        case protocolVersion = "protocol_version"
         case hostPlatform = "host_platform"
         case capabilities
     }
@@ -174,17 +226,20 @@ public struct CapabilitiesMatrix: Codable, Sendable {
 
 public struct RemoteQueryRequest: Codable, Sendable {
     public let query: String
+    public let requestId: String?
     public let requireApproval: Bool
     public let maxSteps: Int
 
-    public init(query: String, requireApproval: Bool = false, maxSteps: Int = 10) {
+    public init(query: String, requestId: String? = nil, requireApproval: Bool = false, maxSteps: Int = 10) {
         self.query = query
+        self.requestId = requestId
         self.requireApproval = requireApproval
         self.maxSteps = maxSteps
     }
 
     enum CodingKeys: String, CodingKey {
         case query
+        case requestId = "request_id"
         case requireApproval = "require_approval"
         case maxSteps = "max_steps"
     }
@@ -192,16 +247,21 @@ public struct RemoteQueryRequest: Codable, Sendable {
 
 public struct RemoteQueryResponse: Codable, Sendable {
     public let sessionId: String
+    public let taskId: String
+    public let requestId: String?
     public let query: String
-    public let status: String
+    public let status: TaskStatus
     public let responseText: String
     public let toolCallsCount: Int
     public let stepsExecuted: Int
     public let verificationPassed: Bool
     public let planId: String?
+    public let protocolVersion: String
 
     enum CodingKeys: String, CodingKey {
         case sessionId = "session_id"
+        case taskId = "task_id"
+        case requestId = "request_id"
         case query
         case status
         case responseText = "response_text"
@@ -209,6 +269,61 @@ public struct RemoteQueryResponse: Codable, Sendable {
         case stepsExecuted = "steps_executed"
         case verificationPassed = "verification_passed"
         case planId = "plan_id"
+        case protocolVersion = "protocol_version"
+    }
+}
+
+public struct TaskCancelRequest: Codable, Sendable {
+    public let taskId: String
+    public let reason: String
+
+    public init(taskId: String, reason: String = "User requested cancellation from iOS") {
+        self.taskId = taskId
+        self.reason = reason
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case taskId = "task_id"
+        case reason
+    }
+}
+
+public struct TaskCancelResponse: Codable, Sendable {
+    public let taskId: String
+    public let success: Bool
+    public let message: String
+    public let timestamp: String
+
+    enum CodingKeys: String, CodingKey {
+        case taskId = "task_id"
+        case success
+        case message
+        case timestamp
+    }
+}
+
+public struct TaskRecord: Codable, Sendable, Identifiable {
+    public var id: String { taskId }
+    public let taskId: String
+    public let requestId: String
+    public let deviceId: String
+    public let query: String
+    public let status: TaskStatus
+    public let createdAt: String
+    public let updatedAt: String
+    public let responseText: String?
+    public let error: String?
+
+    enum CodingKeys: String, CodingKey {
+        case taskId = "task_id"
+        case requestId = "request_id"
+        case deviceId = "device_id"
+        case query
+        case status
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case responseText = "response_text"
+        case error
     }
 }
 
@@ -233,9 +348,17 @@ public struct ProtocolErrorResponse: Codable, Sendable {
     public struct ErrorDetail: Codable, Sendable {
         public let code: String
         public let message: String
+        public let details: [String: String]?
     }
     public let success: Bool
+    public let protocolVersion: String?
     public let error: ErrorDetail
+
+    enum CodingKeys: String, CodingKey {
+        case success
+        case protocolVersion = "protocol_version"
+        case error
+    }
 }
 
 public struct WebSocketEvent: Codable, Sendable {

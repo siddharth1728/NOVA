@@ -11,6 +11,8 @@ public enum NovaClientError: Error, LocalizedError {
     case unauthenticated
     case deviceRevoked
     case invalidHostUrl
+    case taskNotFound
+    case taskCancelled
     case serverError(String)
     case networkError(Error)
 
@@ -22,6 +24,10 @@ public enum NovaClientError: Error, LocalizedError {
             return "This device has been revoked by the Windows host."
         case .invalidHostUrl:
             return "Invalid host URL configured."
+        case .taskNotFound:
+            return "Requested task was not found or already completed."
+        case .taskCancelled:
+            return "Task was cancelled before completion."
         case .serverError(let msg):
             return "Host error: \(msg)"
         case .networkError(let err):
@@ -56,6 +62,16 @@ public final class NovaClient: Sendable {
         }
         request.httpBody = body
         return request
+    }
+
+    public func checkHealth() async throws -> (HealthResponse, Int) {
+        let startTime = CFAbsoluteTimeGetCurrent()
+        let req = try makeRequest(endpoint: "/api/v1/health")
+        let (data, response) = try await session.data(for: req)
+        let latencyMs = Int((CFAbsoluteTimeGetCurrent() - startTime) * 1000)
+        try checkHttpResponse(response, data: data)
+        let health = try JSONDecoder().decode(HealthResponse.self, from: data)
+        return (health, latencyMs)
     }
 
     public func pair(hostUrl: String, pairingCode: String, deviceName: String = "iPhone") async throws -> PairingResponse {
@@ -117,13 +133,30 @@ public final class NovaClient: Sendable {
         return try JSONDecoder().decode(CapabilitiesMatrix.self, from: data)
     }
 
-    public func sendAgentQuery(prompt: String) async throws -> RemoteQueryResponse {
-        let reqPayload = RemoteQueryRequest(query: prompt)
+    public func sendAgentQuery(prompt: String, requestId: String? = nil) async throws -> RemoteQueryResponse {
+        let reqId = requestId ?? UUID().uuidString
+        let reqPayload = RemoteQueryRequest(query: prompt, requestId: reqId)
         let bodyData = try JSONEncoder().encode(reqPayload)
         let req = try makeRequest(endpoint: "/api/v1/agent/query", method: "POST", body: bodyData)
         let (data, response) = try await session.data(for: req)
         try checkHttpResponse(response, data: data)
         return try JSONDecoder().decode(RemoteQueryResponse.self, from: data)
+    }
+
+    public func cancelTask(taskId: String, reason: String = "User cancelled from iOS") async throws -> TaskCancelResponse {
+        let reqPayload = TaskCancelRequest(taskId: taskId, reason: reason)
+        let bodyData = try JSONEncoder().encode(reqPayload)
+        let req = try makeRequest(endpoint: "/api/v1/agent/tasks/\(taskId)/cancel", method: "POST", body: bodyData)
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+        return try JSONDecoder().decode(TaskCancelResponse.self, from: data)
+    }
+
+    public func fetchTask(taskId: String) async throws -> TaskRecord {
+        let req = try makeRequest(endpoint: "/api/v1/agent/tasks/\(taskId)")
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+        return try JSONDecoder().decode(TaskRecord.self, from: data)
     }
 
     public func lockWorkstation(dryRun: Bool = false) async throws -> EmergencyActionResponse {
@@ -149,6 +182,10 @@ public final class NovaClient: Sendable {
                 throw NovaClientError.deviceRevoked
             }
             throw NovaClientError.serverError("Forbidden action")
+        } else if http.statusCode == 404 {
+            throw NovaClientError.taskNotFound
+        } else if http.statusCode == 499 {
+            throw NovaClientError.taskCancelled
         } else if http.statusCode >= 400 {
             if let err = try? JSONDecoder().decode(ProtocolErrorResponse.self, from: data) {
                 throw NovaClientError.serverError(err.error.message)

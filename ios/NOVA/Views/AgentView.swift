@@ -2,16 +2,14 @@
 //  AgentView.swift
 //  NOVA iOS Control Center
 //
-//  Interactive natural language query dispatch, execution progress, and verified result inspection.
+//  Natural language query dispatch, execution monitoring, direct cancellation, and verified result inspection.
 //
 
 import SwiftUI
 
 public struct AgentView: View {
+    @ObservedObject private var appModel = NovaAppModel.shared
     @State private var queryText = ""
-    @State private var isExecuting = false
-    @State private var lastResponse: RemoteQueryResponse?
-    @State private var errorMessage: String?
     @State private var executionHistory: [RemoteQueryResponse] = []
 
     public init() {}
@@ -24,20 +22,20 @@ public struct AgentView: View {
                         // Quick Prompt Suggestions
                         suggestionsSection
 
-                        if let err = errorMessage {
+                        if let err = appModel.errorMessage {
                             errorBanner(err)
                         }
 
-                        if isExecuting {
+                        if appModel.isExecutingTask {
                             executingCard
                         }
 
                         // Last Execution Result
-                        if let resp = lastResponse {
+                        if let resp = appModel.lastQueryResponse {
                             responseCard(resp)
                         }
 
-                        // History
+                        // Execution History
                         if !executionHistory.isEmpty {
                             historySection
                         }
@@ -79,19 +77,34 @@ public struct AgentView: View {
     }
 
     private var executingCard: some View {
-        HStack(spacing: 12) {
-            ProgressView()
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Executing on Windows PC...")
-                    .font(.subheadline.bold())
-                Text("Running through Antigravity safety policies & audit...")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                ProgressView()
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Executing on Windows PC...")
+                        .font(.subheadline.bold())
+                    Text("Running through Antigravity safety policies & audit...")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+
+            // Direct Stop Button (Bypasses LLM, goes directly to host task controller)
+            Button {
+                Task { await appModel.cancelCurrentTask() }
+            } label: {
+                Label("STOP TASK", systemImage: "xmark.octagon.fill")
+                    .font(.caption.bold())
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(Color.red.opacity(0.15))
+                    .foregroundStyle(.red)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
             }
         }
         .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.blue.opacity(0.1))
+        .background(Color.blue.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
@@ -102,7 +115,7 @@ public struct AgentView: View {
                     .font(.subheadline.bold())
                     .foregroundStyle(.green)
                 Spacer()
-                Text(resp.status)
+                Text(resp.status.rawValue)
                     .font(.caption2.bold())
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
@@ -126,7 +139,7 @@ public struct AgentView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
 
             HStack {
-                Text("Session ID: \(resp.sessionId.prefix(8))")
+                Text("Task ID: \(resp.taskId.prefix(12))")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -170,7 +183,7 @@ public struct AgentView: View {
                 .padding(10)
                 .background(Color(.secondarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 20))
-                .disabled(isExecuting)
+                .disabled(appModel.isExecutingTask)
 
             Button {
                 Task { await submitQuery() }
@@ -179,7 +192,7 @@ public struct AgentView: View {
                     .font(.system(size: 32))
                     .foregroundStyle(queryText.trimmingCharacters(in: .whitespaces).isEmpty ? .gray : .blue)
             }
-            .disabled(queryText.trimmingCharacters(in: .whitespaces).isEmpty || isExecuting)
+            .disabled(queryText.trimmingCharacters(in: .whitespaces).isEmpty || appModel.isExecutingTask)
         }
         .padding()
         .background(Color(.systemBackground))
@@ -205,17 +218,9 @@ public struct AgentView: View {
         guard !prompt.isEmpty else { return }
 
         queryText = ""
-        isExecuting = true
-        errorMessage = nil
-
-        do {
-            let resp = try await NovaClient.shared.sendAgentQuery(prompt: prompt)
-            self.lastResponse = resp
+        await appModel.dispatchAgentTask(prompt: prompt)
+        if let resp = appModel.lastQueryResponse {
             self.executionHistory.insert(resp, at: 0)
-        } catch {
-            self.errorMessage = error.localizedDescription
         }
-
-        isExecuting = false
     }
 }
