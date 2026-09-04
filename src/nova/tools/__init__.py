@@ -1,4 +1,5 @@
 from nova.tools.categories import ToolCategory
+from nova.tools.computer import register_computer_tools
 from nova.tools.metadata import ToolMetadata, ToolRiskLevel
 from nova.tools.mutations import (
     copy_file,
@@ -17,6 +18,7 @@ __all__ = [
     "ToolRegistry",
     "get_tool_registry",
     "nova_tool",
+    "register_computer_tools",
     "create_directory",
     "create_file",
     "edit_file",

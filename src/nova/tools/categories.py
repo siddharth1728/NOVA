@@ -11,5 +11,6 @@ class ToolCategory(str, Enum):
     BROWSER = "browser"
     MEMORY = "memory"
     SYSTEM = "system"
+    COMPUTER = "computer"
     UTILITY = "utility"
     SUBAGENT = "subagent"
