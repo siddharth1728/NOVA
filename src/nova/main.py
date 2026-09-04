@@ -338,7 +338,8 @@ def host_pair_code_command(
     """Generates an ephemeral 6-digit pairing code to authorize a new mobile device."""
     from nova.host.pairing import PairingManager
 
-    pm = PairingManager(default_ttl_seconds=ttl)
+    settings = get_settings()
+    pm = PairingManager(default_ttl_seconds=ttl, storage_path=settings.data_dir / "pairing_codes.json")
     code, exp = pm.generate_code()
 
     console.print(

@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 import logging
+from pathlib import Path
 import secrets
 import socket
 from typing import NamedTuple
@@ -21,15 +22,45 @@ class ActiveCode(NamedTuple):
 class PairingManager:
     """Manages ephemeral 6-digit pairing codes for secure device linking."""
 
-    def __init__(self, default_ttl_seconds: int = 300) -> None:
+    def __init__(self, default_ttl_seconds: int = 300, storage_path: Path | None = None) -> None:
         self.default_ttl = default_ttl_seconds
+        self.storage_path = storage_path
         self._codes: dict[str, datetime] = {}
+        if self.storage_path and self.storage_path.exists():
+            self._load_from_storage()
+
+    def _load_from_storage(self) -> None:
+        if not self.storage_path or not self.storage_path.exists():
+            return
+        try:
+            import json
+            data = json.loads(self.storage_path.read_text(encoding="utf-8"))
+            for code, exp_str in data.items():
+                self._codes[code] = datetime.fromisoformat(exp_str)
+        except Exception as ex:
+            logger.warning("Failed to load pairing codes from %s: %s", self.storage_path, ex)
+
+    def _save_to_storage(self) -> None:
+        if not self.storage_path:
+            return
+        try:
+            import json
+            self.storage_path.parent.mkdir(parents=True, exist_ok=True)
+            data = {c: exp.isoformat() for c, exp in self._codes.items()}
+            self.storage_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        except Exception as ex:
+            logger.warning("Failed to save pairing codes to %s: %s", self.storage_path, ex)
 
     def _purge_expired(self) -> None:
+        if self.storage_path:
+            self._load_from_storage()
         now = datetime.now(timezone.utc)
         expired = [c for c, exp in self._codes.items() if exp <= now]
-        for c in expired:
-            del self._codes[c]
+        if expired:
+            for c in expired:
+                del self._codes[c]
+            if self.storage_path:
+                self._save_to_storage()
 
     def generate_code(self, ttl_seconds: int | None = None) -> tuple[str, datetime]:
         """Generate a random 6-digit PIN code with an expiration window."""
@@ -39,6 +70,8 @@ class PairingManager:
         code = f"{secrets.randbelow(1_000_000):06d}"
         expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl)
         self._codes[code] = expires_at
+        if self.storage_path:
+            self._save_to_storage()
         logger.info("Generated new host pairing code: %s (expires in %ds)", code, ttl)
         return code, expires_at
 
@@ -67,6 +100,8 @@ class PairingManager:
 
         # Consume code so it cannot be re-used
         del self._codes[code]
+        if self.storage_path:
+            self._save_to_storage()
 
         # Register or update device
         device = DeviceInfo(

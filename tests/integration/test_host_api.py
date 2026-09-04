@@ -160,3 +160,29 @@ def test_device_revocation_denies_subsequent_calls(host_client):
     status_resp = host_client.get("/api/v1/status", headers=headers)
     assert status_resp.status_code == 403
     assert status_resp.json()["error"]["code"] == "REVOKED_DEVICE"
+
+
+def test_web_control_center_endpoints(host_client):
+    # Test root endpoint serves HTML web app
+    root_resp = host_client.get("/")
+    assert root_resp.status_code == 200
+    assert "text/html" in root_resp.headers["content-type"]
+    assert "NOVA" in root_resp.text
+    assert "STOP TASK" in root_resp.text
+
+    # Test /app alias
+    app_resp = host_client.get("/app")
+    assert app_resp.status_code == 200
+
+    # Test manifest.json
+    manifest_resp = host_client.get("/manifest.json")
+    assert manifest_resp.status_code == 200
+    assert "application/manifest+json" in manifest_resp.headers["content-type"]
+
+    # Test local pairing code convenience endpoint
+    pair_code_resp = host_client.get("/api/v1/pair/code")
+    assert pair_code_resp.status_code == 200
+    data = pair_code_resp.json()
+    assert "code" in data
+    assert len(data["code"]) == 6
+

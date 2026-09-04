@@ -9,7 +9,7 @@ import time
 import uuid
 from typing import Any
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import HTMLResponse, JSONResponse, Response
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from nova.agent.runtime import NovaRuntime
@@ -22,6 +22,7 @@ from nova.errors import AuthenticationError, DeviceRevokedError, PairingExpiredE
 from nova.host.auth import DeviceRegistry, TokenManager
 from nova.host.pairing import PairingManager
 from nova.host.tasks import TaskController
+from nova.host.web import WEB_APP_HTML, WEB_APP_MANIFEST
 from nova.host.websocket import WebSocketHub
 from nova.protocol.errors import ProtocolErrorCode, format_error_payload
 from nova.protocol.models import (
@@ -104,6 +105,23 @@ class HostRouter:
             timestamp=datetime.now(timezone.utc).isoformat(),
         )
         return JSONResponse(resp.model_dump(), status_code=200)
+
+    async def handle_web_app(self, request: Request) -> Response:
+        """GET / and GET /app - Serve Mobile Web Control Center."""
+        return HTMLResponse(WEB_APP_HTML, status_code=200)
+
+    async def handle_web_manifest(self, request: Request) -> Response:
+        """GET /manifest.json - Web App Manifest for iOS Add to Home Screen."""
+        return Response(WEB_APP_MANIFEST, media_type="application/manifest+json", status_code=200)
+
+    async def handle_get_pairing_code(self, request: Request) -> Response:
+        """GET /api/v1/pair/code - Return latest active pairing code or generate one."""
+        pair_info = self.pairing_manager.get_latest_active_code()
+        if not pair_info:
+            code, exp = self.pairing_manager.generate_code()
+        else:
+            code, exp = pair_info
+        return JSONResponse({"code": code, "expires_at": exp.isoformat()}, status_code=200)
 
     async def handle_pair(self, request: Request) -> Response:
         """POST /api/v1/pair - Exchange 6-digit code for device JWT token."""

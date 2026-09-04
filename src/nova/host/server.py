@@ -48,7 +48,10 @@ def create_host_app(
         secret_key=st.host_secret.get_secret_value() if st.host_secret else None,
         key_file=st.data_dir / "host_secret.key",
     )
-    pair = pairing_manager or PairingManager(default_ttl_seconds=st.pairing_code_ttl_seconds)
+    pair = pairing_manager or PairingManager(
+        default_ttl_seconds=st.pairing_code_ttl_seconds,
+        storage_path=st.data_dir / "pairing_codes.json",
+    )
     hub = websocket_hub or WebSocketHub()
     tasks = task_controller or TaskController()
     metrics = system_metrics or SystemMetricsProvider(workspace_root=str(st.workspace_root))
@@ -104,8 +107,12 @@ def create_host_app(
             pass
 
     routes = [
+        Route("/", router.handle_web_app, methods=["GET"]),
+        Route("/app", router.handle_web_app, methods=["GET"]),
+        Route("/manifest.json", router.handle_web_manifest, methods=["GET"]),
         Route("/api/v1/health", router.handle_health, methods=["GET"]),
         Route("/api/v1/pair", router.handle_pair, methods=["POST"]),
+        Route("/api/v1/pair/code", router.handle_get_pairing_code, methods=["GET"]),
         Route("/api/v1/status", router.handle_status, methods=["GET"]),
         Route("/api/v1/screen/capture", router.handle_screen_capture, methods=["POST"]),
         Route("/api/v1/capabilities", router.handle_capabilities, methods=["GET"]),
