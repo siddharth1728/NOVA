@@ -39,18 +39,27 @@ from nova.protocol.models import (
     SystemStatus,
     TaskCancelRequest,
     TaskCancelResponse,
+    TaskCreateRequest,
+    TaskDetailResponse,
+    TaskMetricsResponse,
     TaskRecord,
     TaskStatus,
+    TaskStepResponse,
+    TaskStepsListResponse,
+    TaskActionResponse,
+    StepApprovalRemoteResponse,
     WebSocketEvent,
     WindowBoundsRemoteRequest,
     WindowCloseRemoteRequest,
     WindowFocusRemoteRequest,
+
 )
 from nova.protocol.errors import ProtocolErrorCode, format_error_payload
 from nova.control.windows.models import WindowBounds, WindowInfo
 from nova.control.applications.models import AppInfo, LaunchResult
 from nova.control.processes.models import ProcessInfo, ProcessStopResult
 from nova.control.clipboard.models import ClipboardContent, ClipboardType
+from nova.control.browsers.models import BrowserTab
 
 
 class TestProtocolSwiftCompatibility:
@@ -387,3 +396,106 @@ class TestProtocolSwiftCompatibility:
         assert "event_type" in evt_data
         assert "timestamp" in evt_data
         assert "data" in evt_data
+
+    def test_browser_schemas(self):
+        """Verify BrowserTab and browser status schemas match Swift BrowserTabItem & BrowserStatusResponse."""
+        tab = BrowserTab(
+            tab_id="tab_123",
+            title="NOVA Portal",
+            url="https://github.com/siddharth1728/NOVA",
+            is_active=True,
+        )
+        tab_data = tab.model_dump()
+        assert set(tab_data.keys()) == {"tab_id", "title", "url", "is_active", "loading"}
+        assert tab_data["tab_id"] == "tab_123"
+        assert tab_data["is_active"] is True
+        assert tab_data["loading"] is False
+
+        # Status response dict structure
+        status_dict = {
+            "enabled": True,
+            "running": False,
+            "headless": True,
+            "protocol_version": PROTOCOL_VERSION,
+        }
+        assert set(status_dict.keys()) == {"enabled", "running", "headless", "protocol_version"}
+
+    def test_task_orchestration_schemas(self):
+        """Verify Phase 09 task models match Swift Codable schemas."""
+        req = TaskCreateRequest(
+            query="Research asyncio trends",
+            request_id="req_123",
+            require_approval=True,
+            risk_ceiling="MEDIUM",
+        )
+        req_data = req.model_dump()
+        assert req_data["query"] == "Research asyncio trends"
+        assert req_data["require_approval"] is True
+        assert req_data["risk_ceiling"] == "MEDIUM"
+
+        detail = TaskDetailResponse(
+            task_id="task_abc123",
+            request_id="req_123",
+            device_id="ios-dev-1",
+            query="Research asyncio trends",
+            status=TaskStatus.EXECUTING,
+            created_at=datetime.now(timezone.utc).isoformat(),
+            current_step_index=1,
+            total_steps=3,
+            completed_steps=1,
+            progress_percent=33.3,
+            current_step_description="Extracting content",
+            risk_level="LOW",
+            approval_state="NONE",
+            duration_seconds=1.23,
+            protocol_version=PROTOCOL_VERSION,
+        )
+        detail_data = detail.model_dump()
+        assert detail_data["status"] == "EXECUTING"
+        assert detail_data["total_steps"] == 3
+        assert detail_data["progress_percent"] == 33.3
+
+        step = TaskStepResponse(
+            step_id=1,
+            description="Open tab",
+            tool="browser_new_tab",
+            status="COMPLETED",
+            risk_level="LOW",
+            attempt_count=1,
+            requires_approval=False,
+            domain="BROWSER",
+            reversibility="REVERSIBLE",
+        )
+        step_data = step.model_dump()
+        assert step_data["step_id"] == 1
+        assert step_data["tool"] == "browser_new_tab"
+        assert step_data["domain"] == "BROWSER"
+
+        action = TaskActionResponse(
+            task_id="task_abc123",
+            status=TaskStatus.PAUSED,
+            success=True,
+            message="Task paused safely",
+        )
+        action_data = action.model_dump()
+        assert action_data["status"] == "PAUSED"
+        assert action_data["success"] is True
+
+        metrics = TaskMetricsResponse(
+            tasks_started=5,
+            tasks_completed=4,
+            tasks_failed=1,
+            tasks_cancelled=0,
+            steps_executed=12,
+            steps_retried=1,
+            steps_replanned=0,
+            approval_requests=1,
+            approval_denials=0,
+            verification_failures=1,
+            average_task_duration=2.45,
+        )
+        metrics_data = metrics.model_dump()
+        assert metrics_data["tasks_started"] == 5
+        assert metrics_data["average_task_duration"] == 2.45
+
+

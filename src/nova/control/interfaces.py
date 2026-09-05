@@ -9,7 +9,7 @@ from typing import Any
 
 from nova.control.applications.models import AppInfo, LaunchRequest, LaunchResult
 from nova.control.automation.models import TargetingResult, UIElementInfo, UIElementTarget, VisionTarget
-from nova.control.browsers.models import BrowserInfo, BrowserTab
+from nova.control.browsers.models import BrowserActionResult, BrowserInfo, BrowserTab, DOMElement
 from nova.control.clipboard.models import ClipboardContent, ClipboardType
 from nova.control.input.models import InputResult, Key, MouseAction, MouseButton
 from nova.control.processes.models import ProcessFilter, ProcessInfo, ProcessStopResult
@@ -269,6 +269,95 @@ class BrowserController(ABC):
     @abstractmethod
     def navigate(self, url: str, browser: str | None = None) -> bool:
         """Navigate browser to target URL."""
+        ...
+
+
+class AsyncBrowserController(ABC):
+    """Contract for asynchronous, deterministic browser automation."""
+
+    @abstractmethod
+    async def start(self) -> bool:
+        """Start or connect to the isolated browser runtime."""
+        ...
+
+    @abstractmethod
+    async def stop(self) -> None:
+        """Stop the browser runtime and release resources."""
+        ...
+
+    @abstractmethod
+    async def list_tabs(self) -> list[BrowserTab]:
+        """Return all managed tabs."""
+        ...
+
+    @abstractmethod
+    async def new_tab(self, url: str | None = None) -> BrowserTab:
+        """Open and return a new tab."""
+        ...
+
+    @abstractmethod
+    async def close_tab(self, tab_id: str) -> bool:
+        """Close specific tab."""
+        ...
+
+    @abstractmethod
+    async def focus_tab(self, tab_id: str) -> bool:
+        """Bring tab to foreground."""
+        ...
+
+    @abstractmethod
+    async def navigate(self, tab_id: str, url: str) -> BrowserActionResult:
+        """Navigate a tab to a specific URL."""
+        ...
+
+    @abstractmethod
+    async def go_back(self, tab_id: str) -> BrowserActionResult:
+        """Navigate backward in tab history."""
+        ...
+
+    @abstractmethod
+    async def go_forward(self, tab_id: str) -> BrowserActionResult:
+        """Navigate forward in tab history."""
+        ...
+
+    @abstractmethod
+    async def reload(self, tab_id: str) -> BrowserActionResult:
+        """Reload the tab."""
+        ...
+
+    @abstractmethod
+    async def inspect(self, tab_id: str) -> list[DOMElement]:
+        """Retrieve deterministic, interactive elements from the current tab."""
+        ...
+
+    @abstractmethod
+    async def click(self, tab_id: str, ref: str) -> BrowserActionResult:
+        """Click a specific element reference."""
+        ...
+
+    @abstractmethod
+    async def fill(self, tab_id: str, ref: str, value: str) -> BrowserActionResult:
+        """Fill an input element reference."""
+        ...
+
+    @abstractmethod
+    async def select(self, tab_id: str, ref: str, value: str) -> BrowserActionResult:
+        """Select a dropdown/select option."""
+        ...
+
+    @abstractmethod
+    async def hover(self, tab_id: str, ref: str) -> BrowserActionResult:
+        """Hover over an element reference."""
+        ...
+
+    @abstractmethod
+    async def extract(self, tab_id: str) -> str:
+        """Extract visible content payload from the tab."""
+        ...
+
+    @abstractmethod
+    async def get_download_status(self, tab_id: str) -> list[dict]:
+        """Get status of downloads initiated by this tab."""
         ...
 
 

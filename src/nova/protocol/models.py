@@ -35,12 +35,16 @@ class TaskStatus(str, Enum):
     QUEUED = "QUEUED"
     PLANNING = "PLANNING"
     WAITING_FOR_APPROVAL = "WAITING_FOR_APPROVAL"
+    AWAITING_APPROVAL = "AWAITING_APPROVAL"
     EXECUTING = "EXECUTING"
+    PAUSED = "PAUSED"
     VERIFYING = "VERIFYING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
+    ROLLED_BACK = "ROLLED_BACK"
     DISCONNECTED = "DISCONNECTED"
+
 
 
 class DeviceInfo(BaseModel):
@@ -246,8 +250,124 @@ class WebSocketEvent(BaseModel):
 
 
 # =============================================================================
+# Phase 09: Agentic Task Execution & Multi-Step Workflow Models
+# =============================================================================
+
+
+class TaskCreateRequest(BaseModel):
+    """Client request to initialize and start an orchestrated agentic task."""
+
+    query: str = Field(min_length=1, description="Goal or multi-step prompt")
+    request_id: str | None = Field(default=None, description="Client idempotency key")
+    require_approval: bool = Field(default=False, description="Require manual approval before executing plan")
+    risk_ceiling: str = Field(default="MEDIUM", description="Max risk allowed without manual approval")
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
+class TaskDetailResponse(BaseModel):
+    """Comprehensive status and progress report for an orchestrated task."""
+
+    task_id: str
+    request_id: str
+    device_id: str
+    query: str
+    status: TaskStatus
+    created_at: str
+    started_at: str | None = None
+    completed_at: str | None = None
+    current_step_index: int = 0
+    total_steps: int = 0
+    completed_steps: int = 0
+    progress_percent: float = 0.0
+    current_step_description: str | None = None
+    risk_level: str = "LOW"
+    approval_state: str = "NONE"
+    pending_approval: dict[str, Any] | None = None
+    response_text: str | None = None
+    error: str | None = None
+    artifacts: list[dict[str, Any]] = Field(default_factory=list)
+    duration_seconds: float = 0.0
+    protocol_version: str = PROTOCOL_VERSION
+
+
+class TaskStepResponse(BaseModel):
+    """Details of an individual plan step within an orchestrated task."""
+
+    step_id: int
+    description: str
+    tool: str
+    status: str
+    risk_level: str
+    attempt_count: int
+    requires_approval: bool
+    domain: str = "FILESYSTEM"
+    reversibility: str = "REVERSIBLE"
+    error: str | None = None
+
+
+class TaskStepsListResponse(BaseModel):
+    """List of all plan steps for a task."""
+
+    task_id: str
+    steps: list[TaskStepResponse]
+    total: int
+
+
+class TaskActionRequest(BaseModel):
+    """Generic control action request (pause, resume, etc.)."""
+
+    reason: str = Field(default="User initiated action")
+
+
+class TaskActionResponse(BaseModel):
+    """Outcome of a task control action."""
+
+    task_id: str
+    status: TaskStatus
+    success: bool
+    message: str
+    timestamp: str = Field(default_factory=_utc_now_iso)
+
+
+class StepApprovalRemoteRequest(BaseModel):
+    """Human approval decision on a pending step."""
+
+    step_id: int
+    approved: bool
+    reason: str | None = None
+
+
+class StepApprovalRemoteResponse(BaseModel):
+    """Outcome of step approval submission."""
+
+    task_id: str
+    step_id: int
+    approved: bool
+    status: TaskStatus
+    message: str
+    timestamp: str = Field(default_factory=_utc_now_iso)
+
+
+class TaskMetricsResponse(BaseModel):
+    """Operational telemetry counters for the task orchestration system."""
+
+    tasks_started: int = 0
+    tasks_completed: int = 0
+    tasks_failed: int = 0
+    tasks_cancelled: int = 0
+    steps_executed: int = 0
+    steps_retried: int = 0
+    steps_replanned: int = 0
+    approval_requests: int = 0
+    approval_denials: int = 0
+    verification_failures: int = 0
+    average_task_duration: float = 0.0
+
+
+# =============================================================================
 # Phase 05: Remote Computer Control Requests
 # =============================================================================
+
 
 
 class WindowFocusRemoteRequest(BaseModel):
@@ -276,6 +396,7 @@ class AppLaunchRemoteRequest(BaseModel):
 class MouseMoveRemoteRequest(BaseModel):
     x: int
     y: int
+    delta: bool = False
     relative_to_hwnd: int | None = None
 
 

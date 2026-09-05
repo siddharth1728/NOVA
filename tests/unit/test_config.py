@@ -8,8 +8,11 @@ from nova.config.settings import Environment, NovaSettings, SecurityMode
 from nova.errors import ConfigurationError
 
 
-def test_default_settings(temp_workspace: Path, temp_data_dir: Path) -> None:
+def test_default_settings(temp_workspace: Path, temp_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NOVA_SECURITY_MODE", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     settings = NovaSettings(
+        _env_file=None,
         workspace_root=temp_workspace,
         data_dir=temp_data_dir,
     )

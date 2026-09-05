@@ -150,7 +150,18 @@ public struct AgentView: View {
                         .font(.caption2)
                 }
             }
+
+            NavigationLink(destination: TaskExecutionView(taskId: resp.taskId)) {
+                Label("View Multi-Step Timeline", systemImage: "list.bullet.rectangle.portrait")
+                    .font(.caption.bold())
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                    .background(Color.blue.opacity(0.12))
+                    .foregroundStyle(.blue)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
         }
+
         .padding()
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))

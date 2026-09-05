@@ -130,7 +130,15 @@ class WindowsAppDiscovery:
                                         stem = Path(app_exe).stem
                                         name = stem.replace("_", " ").title()
                                         exe_lower = app_exe.lower()
-                                        if exe_lower not in discovered:
+                                        
+                                        # Add or overwrite if the existing path is not absolute
+                                        should_add = True
+                                        if exe_lower in discovered:
+                                            existing = discovered[exe_lower]
+                                            if os.path.isabs(existing.path) and os.path.exists(existing.path):
+                                                should_add = False
+                                        
+                                        if should_add:
                                             discovered[exe_lower] = AppInfo(
                                                 name=name,
                                                 executable=app_exe,

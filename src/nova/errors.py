@@ -290,3 +290,16 @@ class ComputerActionCancelledError(ComputerControlError):
     """Computer operation was terminated early by cancellation handle."""
 
 
+# =============================================================================
+# Phase 08: Browser Automation & Web Security Exceptions
+# =============================================================================
+
+
+class SecurityError(NovaError):
+    """Raised when an operation violates web safety boundaries or contains prompt injection."""
+
+
+class BrowserControlError(NovaError):
+    """Base exception for deterministic browser automation errors."""
+
+

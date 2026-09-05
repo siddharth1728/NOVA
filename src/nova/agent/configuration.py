@@ -1,6 +1,7 @@
 """Builds native Google Antigravity configuration objects from NOVA settings."""
 
 from pathlib import Path
+from typing import Any
 
 from google.antigravity import LocalAgentConfig
 from google.antigravity.types import AgentBehavior, CapabilitiesConfig
@@ -56,9 +57,15 @@ def build_agent_config(
         if pkg_skills.exists():
             skills_paths.append(str(pkg_skills))
 
+    custom_tools: list[Any] = []
+    if cfg.browser_enabled:
+        from nova.tools.browser import BROWSER_CALLABLES
+        custom_tools.extend(BROWSER_CALLABLES)
+
     return LocalAgentConfig(
         system_instructions=NOVA_IDENTITY_PROMPT,
         capabilities=capabilities,
+        tools=custom_tools,
         policies=policies,
         workspaces=[str(cfg.workspace_root)],
         model=cfg.model_name,

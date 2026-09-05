@@ -226,6 +226,10 @@ class WindowsKeyboardController(KeyboardController):
             ctypes.windll.user32.keybd_event(vk, 0, KEYEVENTF_KEYUP, 0)
             time.sleep(0.02)
 
+        # Extra safety: Ensure VK_MENU (Alt), VK_CONTROL (Ctrl), VK_SHIFT are explicitly released
+        for mod_vk in (win32con.VK_MENU, win32con.VK_CONTROL, win32con.VK_SHIFT, win32con.VK_LWIN, win32con.VK_RWIN):
+            ctypes.windll.user32.keybd_event(mod_vk, 0, KEYEVENTF_KEYUP, 0)
+
         return InputResult(
             success=True,
             action="send_combination",

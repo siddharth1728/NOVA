@@ -56,6 +56,7 @@ class NovaSettings(BaseSettings):
     # API Credentials (can also be sourced from ambient GEMINI_API_KEY)
     gemini_api_key: SecretStr | None = Field(
         default=None,
+        validation_alias="GEMINI_API_KEY",
         description="Google Gemini API key for model inference",
     )
 
@@ -78,6 +79,46 @@ class NovaSettings(BaseSettings):
         default=True,
         description="Whether medium risk actions trigger human approval",
     )
+
+    # Browser & Web Intelligence (Phase 08)
+    browser_enabled: bool = Field(
+        default=True,
+        description="Whether the NOVA browser subsystem is enabled",
+    )
+    browser_headless: bool = Field(
+        default=True,
+        description="Run browser in headless mode by default",
+    )
+    browser_max_tabs: int = Field(
+        default=10,
+        description="Maximum concurrent tabs allowed",
+    )
+    browser_navigation_timeout_ms: int = Field(
+        default=30000,
+        description="Timeout for page navigation in ms",
+    )
+    browser_action_timeout_ms: int = Field(
+        default=10000,
+        description="Timeout for element actions in ms",
+    )
+    browser_max_inspection_elements: int = Field(
+        default=300,
+        description="Maximum interactive elements returned per inspection",
+    )
+    browser_require_approval_for_submissions: bool = Field(
+        default=True,
+        description="Always require human approval for form submissions regardless of security mode",
+    )
+
+    @property
+    def browser_profile_dir(self) -> Path:
+        """Directory path for isolated NOVA browser profile."""
+        return self.data_dir / "browser" / "profile"
+
+    @property
+    def browser_download_dir(self) -> Path:
+        """Directory path for NOVA browser downloads and quarantine."""
+        return self.data_dir / "browser" / "downloads"
 
     # Logging & Observability
     log_level: str = Field(

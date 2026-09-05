@@ -13,7 +13,7 @@ from nova.observability.audit import get_audit_trail
 from nova.security.paths import resolve_and_confine
 from nova.tools.categories import ToolCategory
 from nova.tools.metadata import ToolRiskLevel
-from nova.tools.registry import get_tool_registry, nova_tool
+from nova.tools.registry import ToolRegistry, get_tool_registry, nova_tool
 from nova.transactions.manager import (
     atomic_write,
     compute_file_hash,
@@ -430,9 +430,9 @@ def copy_file(
     return result
 
 
-def register_mutation_tools() -> None:
-    """Registers the six controlled mutation tools into the global ToolRegistry."""
-    registry = get_tool_registry()
+def register_mutation_tools(registry: ToolRegistry | None = None) -> None:
+    """Registers the six controlled mutation tools into the global or provided ToolRegistry."""
+    reg = registry or get_tool_registry()
 
     tools_to_register = [
         ("create_directory", create_directory, "Create a directory safely inside the workspace root."),
@@ -452,7 +452,7 @@ def register_mutation_tools() -> None:
             requires_approval=True,
             mutates_state=True,
             is_reversible=True,
-            registry=registry,
+            registry=reg,
         )(fn)
 
 

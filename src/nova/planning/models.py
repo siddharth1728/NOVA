@@ -52,6 +52,15 @@ class PlanStep(BaseModel):
     )
     risk_level: ToolRiskLevel = Field(default=ToolRiskLevel.MEDIUM)
     status: PlanStepStatus = Field(default=PlanStepStatus.PENDING)
+    requires_approval: bool = Field(default=False, description="Whether human approval is required before execution")
+    max_retries: int = Field(default=2, description="Maximum retry attempts on recoverable failures")
+    attempt_count: int = Field(default=0, description="Current execution attempt count")
+    domain: str = Field(default="FILESYSTEM", description="Control domain: FILESYSTEM, WINDOWS, BROWSER, PROCESS, CLIPBOARD")
+    reversibility: str = Field(default="REVERSIBLE", description="REVERSIBLE, PARTIALLY_REVERSIBLE, or NON_REVERSIBLE")
+    expected_observation: dict[str, Any] = Field(default_factory=dict, description="Expected empirical observation across domains")
+    verification_rule: dict[str, Any] = Field(default_factory=dict, description="Verification assertions to check after tool execution")
+    last_error: str | None = Field(default=None, description="Last error message if failed")
+
 
 
 class Plan(BaseModel):

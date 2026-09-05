@@ -404,6 +404,83 @@ def host_revoke_command(
         sys.exit(1)
 
 
+# Browser Subcommands (Phase 08)
+browser_app = typer.Typer(name="browser", help="Manage NOVA deterministic browser automation.")
+app.add_typer(browser_app, name="browser")
+
+
+@browser_app.command(name="check")
+def browser_check_command() -> None:
+    """Checks the environment and dependencies for browser automation."""
+    from nova.control.browsers.playwright_manager import PlaywrightBrowserController
+    import asyncio
+
+    console.print("[bold cyan]Checking Browser Automation Dependencies...[/bold cyan]")
+    
+    table = Table(title="Browser Subsystem Checks", show_header=True, header_style="bold green")
+    table.add_column("Component", style="bold")
+    table.add_column("Status")
+    table.add_column("Details")
+    
+    try:
+        import playwright
+        table.add_row("Playwright Package", "[green]PASS[/green]", f"v{playwright.__version__}")
+    except ImportError:
+        table.add_row("Playwright Package", "[red]FAIL[/red]", "playwright not installed")
+        
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            # Check if chromium is installed
+            try:
+                browser = p.chromium.launch(headless=True)
+                table.add_row("Chromium Binary", "[green]PASS[/green]", f"v{browser.version}")
+                browser.close()
+            except Exception as e:
+                table.add_row("Chromium Binary", "[red]FAIL[/red]", "Run 'playwright install chromium'")
+    except Exception as e:
+        table.add_row("Playwright Engine", "[red]FAIL[/red]", str(e))
+        
+    console.print(table)
+
+
+@browser_app.command(name="status")
+def browser_status_command() -> None:
+    """Displays the live status of the active browser controller and its tabs."""
+    from nova.control.browsers.playwright_manager import PlaywrightBrowserController
+    from nova.config.settings import get_settings
+    
+    settings = get_settings()
+    
+    if not settings.browser_enabled:
+        console.print("[yellow]Browser automation is disabled in NOVA settings.[/yellow]")
+        return
+        
+    # Since we can't easily connect to the running FastAPI server's internal state from a new CLI process,
+    # we'll query the REST API if the server is running on localhost.
+    import urllib.request
+    import json
+    
+    try:
+        req = urllib.request.Request("http://127.0.0.1:8000/api/v1/browser/status")
+        with urllib.request.urlopen(req, timeout=2.0) as response:
+            data = json.loads(response.read().decode())
+            
+            table = Table(title="Browser Subsystem Status", show_header=True)
+            table.add_column("Metric", style="bold cyan")
+            table.add_column("Value")
+            
+            table.add_row("Status", "[green]ONLINE[/green]" if data.get("running") else "[yellow]OFFLINE[/yellow]")
+            table.add_row("Browser Type", data.get("browser_type", "N/A"))
+            table.add_row("Headless Mode", str(data.get("headless", True)))
+            table.add_row("Active Tabs", str(data.get("active_tabs", 0)))
+            
+            console.print(table)
+    except Exception as e:
+        console.print(f"[yellow]Could not fetch status from Host Server (is it running on port 8000?)[/yellow]")
+        console.print(f"[dim]Error: {e}[/dim]")
+
+
 def cli() -> None:
     """Entry point for project scripts."""
     app()

@@ -32,17 +32,23 @@ public struct MainTabView: View {
                 }
                 .tag(2)
 
+            BrowserView()
+                .tabItem {
+                    Label("Browser", systemImage: "globe")
+                }
+                .tag(3)
+
             ActivityView()
                 .tabItem {
                     Label("Activity", systemImage: "waveform.path.ecg")
                 }
-                .tag(3)
+                .tag(4)
 
             SettingsView()
                 .tabItem {
                     Label("Settings", systemImage: "gearshape.fill")
                 }
-                .tag(4)
+                .tag(5)
         }
     }
 }

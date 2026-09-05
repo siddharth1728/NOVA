@@ -256,6 +256,14 @@ public final class NovaClient: Sendable {
         try checkHttpResponse(response, data: data)
     }
 
+    public func sendKeyCombo(keys: [String]) async throws {
+        let payload = KeyComboRequest(keys: keys, targetHwnd: nil)
+        let body = try JSONEncoder().encode(payload)
+        let req = try makeRequest(endpoint: "/api/v1/computer/keyboard/press", method: "POST", body: body)
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+    }
+
     public func listProcesses(search: String? = nil, top: Int = 50) async throws -> [ProcessInfo] {
         var ep = "/api/v1/computer/processes?top=\(top)"
         if let s = search, !s.isEmpty, let enc = s.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
@@ -276,6 +284,119 @@ public final class NovaClient: Sendable {
         return try JSONDecoder().decode(ProcessStopResponse.self, from: data)
     }
 
+    // MARK: - Browser Subsystem API (Phase 08)
+
+    public func getBrowserStatus() async throws -> BrowserStatusResponse {
+        let req = try makeRequest(endpoint: "/api/v1/browser/status")
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+        return try JSONDecoder().decode(BrowserStatusResponse.self, from: data)
+    }
+
+    public func listBrowserTabs() async throws -> [BrowserTabItem] {
+        let req = try makeRequest(endpoint: "/api/v1/browser/tabs")
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+        return try JSONDecoder().decode([BrowserTabItem].self, from: data)
+    }
+
+    public func createBrowserTab(url: String?) async throws -> BrowserTabItem {
+        let payload = BrowserNewTabRequest(url: url)
+        let body = try JSONEncoder().encode(payload)
+        let req = try makeRequest(endpoint: "/api/v1/browser/tabs", method: "POST", body: body)
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+        return try JSONDecoder().decode(BrowserTabItem.self, from: data)
+    }
+
+    public func focusBrowserTab(tabId: String) async throws -> Bool {
+        let req = try makeRequest(endpoint: "/api/v1/browser/tabs/\(tabId)/focus", method: "POST")
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+        let res = try JSONDecoder().decode(BrowserTabActionResponse.self, from: data)
+        return res.success
+    }
+
+    public func closeBrowserTab(tabId: String) async throws -> Bool {
+        let req = try makeRequest(endpoint: "/api/v1/browser/tabs/\(tabId)", method: "DELETE")
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+        let res = try JSONDecoder().decode(BrowserTabActionResponse.self, from: data)
+        return res.success
+    }
+
+    // =========================================================================
+    // Phase 09: Task Orchestration API
+    // =========================================================================
+
+    public func createOrchestratedTask(query: String, requestId: String? = nil, requireApproval: Bool = false, riskCeiling: String = "MEDIUM") async throws -> TaskDetailResponse {
+        let payload = TaskCreateRequest(query: query, requestId: requestId, requireApproval: requireApproval, riskCeiling: riskCeiling)
+        let body = try JSONEncoder().encode(payload)
+        let req = try makeRequest(endpoint: "/api/v1/tasks", method: "POST", body: body)
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+        return try JSONDecoder().decode(TaskDetailResponse.self, from: data)
+    }
+
+    public func listOrchestratedTasks(status: String? = nil, limit: Int = 50) async throws -> [TaskDetailResponse] {
+        var endpoint = "/api/v1/tasks?limit=\(limit)"
+        if let status = status {
+            endpoint += "&status=\(status)"
+        }
+        let req = try makeRequest(endpoint: endpoint, method: "GET")
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+        return try JSONDecoder().decode([TaskDetailResponse].self, from: data)
+    }
+
+    public func getOrchestratedTask(taskId: String) async throws -> TaskDetailResponse {
+        let req = try makeRequest(endpoint: "/api/v1/tasks/\(taskId)", method: "GET")
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+        return try JSONDecoder().decode(TaskDetailResponse.self, from: data)
+    }
+
+    public func pauseOrchestratedTask(taskId: String, reason: String = "User paused from iOS") async throws -> TaskActionResponse {
+        let payload = TaskActionRequest(reason: reason)
+        let body = try JSONEncoder().encode(payload)
+        let req = try makeRequest(endpoint: "/api/v1/tasks/\(taskId)/pause", method: "POST", body: body)
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+        return try JSONDecoder().decode(TaskActionResponse.self, from: data)
+    }
+
+    public func resumeOrchestratedTask(taskId: String) async throws -> TaskActionResponse {
+        let req = try makeRequest(endpoint: "/api/v1/tasks/\(taskId)/resume", method: "POST")
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+        return try JSONDecoder().decode(TaskActionResponse.self, from: data)
+    }
+
+    public func cancelOrchestratedTask(taskId: String, reason: String = "User cancelled from iOS") async throws -> TaskActionResponse {
+        let payload = TaskActionRequest(reason: reason)
+        let body = try JSONEncoder().encode(payload)
+        let req = try makeRequest(endpoint: "/api/v1/tasks/\(taskId)/cancel", method: "POST", body: body)
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+        return try JSONDecoder().decode(TaskActionResponse.self, from: data)
+    }
+
+    public func getOrchestratedTaskSteps(taskId: String) async throws -> TaskStepsListResponse {
+        let req = try makeRequest(endpoint: "/api/v1/tasks/\(taskId)/steps", method: "GET")
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+        return try JSONDecoder().decode(TaskStepsListResponse.self, from: data)
+    }
+
+    public func approveOrchestratedTaskStep(taskId: String, stepId: Int, approved: Bool, reason: String? = nil) async throws -> StepApprovalRemoteResponse {
+        let payload = StepApprovalRemoteRequest(stepId: stepId, approved: approved, reason: reason)
+        let body = try JSONEncoder().encode(payload)
+        let endpoint = approved ? "/api/v1/tasks/\(taskId)/approve" : "/api/v1/tasks/\(taskId)/deny"
+        let req = try makeRequest(endpoint: endpoint, method: "POST", body: body)
+        let (data, response) = try await session.data(for: req)
+        try checkHttpResponse(response, data: data)
+        return try JSONDecoder().decode(StepApprovalRemoteResponse.self, from: data)
+    }
 
     private func checkHttpResponse(_ response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse else {

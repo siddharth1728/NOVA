@@ -3,7 +3,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 import logging
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
@@ -27,8 +27,10 @@ from nova.control.power import PowerControlProvider
 from nova.control.screen import ScreenCaptureProvider
 from nova.control.system import SystemMetricsProvider
 from nova.host.auth import DeviceRegistry, TokenManager
+from nova.host.browser_router import BrowserRouter
 from nova.host.pairing import PairingManager
 from nova.host.router import HostRouter
+from nova.host.task_router import TaskRouter
 from nova.host.tasks import TaskController
 from nova.host.websocket import WebSocketHub
 from nova.protocol.models import WebSocketEvent
@@ -56,6 +58,8 @@ def create_host_app(
     process_controller: ProcessController | None = None,
     ui_automation_controller: UIAutomationController | None = None,
     computer_journal: ComputerActionJournal | None = None,
+    browser_controller: Any | None = None,
+    task_orchestrator: Any | None = None,
     telemetry_interval: float = 3.0,
 ) -> Starlette:
     """Factory creating the production Starlette ASGI app for the Windows Host."""
@@ -98,6 +102,21 @@ def create_host_app(
         ui_automation_controller=ui_automation_controller,
         journal=computer_journal,
     )
+    
+    browser_router = BrowserRouter(
+        settings=st,
+        device_registry=reg,
+        token_manager=tok,
+        browser_controller=browser_controller,
+    )
+
+    task_router = TaskRouter(
+        settings=st,
+        device_registry=reg,
+        token_manager=tok,
+        websocket_hub=hub,
+        orchestrator=task_orchestrator,
+    )
 
     # Periodic telemetry background task for connected WebSockets
     async def _telemetry_broadcaster():
@@ -125,6 +144,7 @@ def create_host_app(
         app.state.token_manager = tok
         app.state.websocket_hub = hub
         app.state.task_controller = tasks
+        app.state.task_router = task_router
         yield
         task.cancel()
         try:
@@ -148,6 +168,27 @@ def create_host_app(
         Route("/api/v1/emergency/lock", router.handle_emergency_lock, methods=["POST"]),
         Route("/api/v1/devices", router.handle_list_devices, methods=["GET"]),
         Route("/api/v1/devices/{device_id}/revoke", router.handle_revoke_device, methods=["POST"]),
+
+        # Phase 09: Multi-Step Agentic Task Orchestration Endpoints
+        Route("/api/v1/tasks", task_router.handle_list_tasks, methods=["GET"]),
+        Route("/api/v1/tasks", task_router.handle_create_task, methods=["POST"]),
+        Route("/api/v1/tasks/metrics", task_router.handle_task_metrics, methods=["GET"]),
+        Route("/api/v1/tasks/{task_id}", task_router.handle_get_task, methods=["GET"]),
+        Route("/api/v1/tasks/{task_id}/pause", task_router.handle_pause_task, methods=["POST"]),
+        Route("/api/v1/tasks/{task_id}/resume", task_router.handle_resume_task, methods=["POST"]),
+        Route("/api/v1/tasks/{task_id}/cancel", task_router.handle_cancel_task, methods=["POST"]),
+        Route("/api/v1/tasks/{task_id}/steps", task_router.handle_get_task_steps, methods=["GET"]),
+        Route("/api/v1/tasks/{task_id}/approve", task_router.handle_approve_step, methods=["POST"]),
+        Route("/api/v1/tasks/{task_id}/deny", task_router.handle_deny_step, methods=["POST"]),
+
+        # Phase 08: Browser Endpoints
+        Route("/api/v1/browser/status", browser_router.handle_status, methods=["GET"]),
+        Route("/api/v1/browser/tabs", browser_router.handle_list_tabs, methods=["GET"]),
+        Route("/api/v1/browser/tabs", browser_router.handle_new_tab, methods=["POST"]),
+        Route("/api/v1/browser/tabs/{tab_id}", browser_router.handle_close_tab, methods=["DELETE"]),
+        Route("/api/v1/browser/tabs/{tab_id}/focus", browser_router.handle_focus_tab, methods=["POST"]),
+
+        
         # Phase 05: Authoritative Computer Control Endpoints
         Route("/api/v1/computer/windows", router.handle_list_windows, methods=["GET"]),
         Route("/api/v1/computer/windows/focus", router.handle_focus_window, methods=["POST"]),

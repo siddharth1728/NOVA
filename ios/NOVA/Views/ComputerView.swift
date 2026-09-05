@@ -428,7 +428,7 @@ public struct ComputerView: View {
     private func shortcutButton(_ label: String, keys: [String]) -> some View {
         Button {
             Task {
-                try? await NovaClient.shared.sendKeyPress(key: keys.joined(separator: "+"))
+                try? await NovaClient.shared.sendKeyCombo(keys: keys)
                 flashFeedback("Combo: \(label)")
             }
         } label: {

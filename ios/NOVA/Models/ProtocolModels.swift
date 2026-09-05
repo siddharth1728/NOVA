@@ -26,13 +26,17 @@ public enum TaskStatus: String, Codable, Sendable {
     case queued = "QUEUED"
     case planning = "PLANNING"
     case waitingForApproval = "WAITING_FOR_APPROVAL"
+    case awaitingApproval = "AWAITING_APPROVAL"
     case executing = "EXECUTING"
+    case paused = "PAUSED"
     case verifying = "VERIFYING"
     case completed = "COMPLETED"
     case failed = "FAILED"
     case cancelled = "CANCELLED"
+    case rolledBack = "ROLLED_BACK"
     case disconnected = "DISCONNECTED"
 }
+
 
 public struct PairingRequest: Codable, Sendable {
     public let pairingCode: String
@@ -385,8 +389,208 @@ public struct WebSocketEvent: Codable, Sendable {
 }
 
 // =============================================================================
+// Phase 09: Multi-Step Agentic Task Orchestration Models
+// =============================================================================
+
+public struct TaskCreateRequest: Codable, Sendable {
+    public let query: String
+    public let requestId: String?
+    public let requireApproval: Bool
+    public let riskCeiling: String
+
+    public init(query: String, requestId: String? = nil, requireApproval: Bool = false, riskCeiling: String = "MEDIUM") {
+        self.query = query
+        self.requestId = requestId
+        self.requireApproval = requireApproval
+        self.riskCeiling = riskCeiling
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case query
+        case requestId = "request_id"
+        case requireApproval = "require_approval"
+        case riskCeiling = "risk_ceiling"
+    }
+}
+
+public struct TaskDetailResponse: Codable, Sendable, Identifiable {
+    public var id: String { taskId }
+    public let taskId: String
+    public let requestId: String
+    public let deviceId: String
+    public let query: String
+    public let status: TaskStatus
+    public let createdAt: String
+    public let startedAt: String?
+    public let completedAt: String?
+    public let currentStepIndex: Int
+    public let totalSteps: Int
+    public let completedSteps: Int
+    public let progressPercent: Double
+    public let currentStepDescription: String?
+    public let riskLevel: String
+    public let approvalState: String
+    public let pendingApproval: [String: String]?
+    public let responseText: String?
+    public let error: String?
+    public let durationSeconds: Double
+    public let protocolVersion: String
+
+    enum CodingKeys: String, CodingKey {
+        case taskId = "task_id"
+        case requestId = "request_id"
+        case deviceId = "device_id"
+        case query
+        case status
+        case createdAt = "created_at"
+        case startedAt = "started_at"
+        case completedAt = "completed_at"
+        case currentStepIndex = "current_step_index"
+        case totalSteps = "total_steps"
+        case completedSteps = "completed_steps"
+        case progressPercent = "progress_percent"
+        case currentStepDescription = "current_step_description"
+        case riskLevel = "risk_level"
+        case approvalState = "approval_state"
+        case pendingApproval = "pending_approval"
+        case responseText = "response_text"
+        case error
+        case durationSeconds = "duration_seconds"
+        case protocolVersion = "protocol_version"
+    }
+}
+
+public struct TaskStepResponse: Codable, Sendable, Identifiable {
+    public var id: Int { stepId }
+    public let stepId: Int
+    public let description: String
+    public let tool: String
+    public let status: String
+    public let riskLevel: String
+    public let attemptCount: Int
+    public let requiresApproval: Bool
+    public let domain: String
+    public let reversibility: String
+    public let error: String?
+
+    enum CodingKeys: String, CodingKey {
+        case stepId = "step_id"
+        case description
+        case tool
+        case status
+        case riskLevel = "risk_level"
+        case attemptCount = "attempt_count"
+        case requiresApproval = "requires_approval"
+        case domain
+        case reversibility
+        case error
+    }
+}
+
+public struct TaskStepsListResponse: Codable, Sendable {
+    public let taskId: String
+    public let steps: [TaskStepResponse]
+    public let total: Int
+
+    enum CodingKeys: String, CodingKey {
+        case taskId = "task_id"
+        case steps
+        case total
+    }
+}
+
+public struct TaskActionRequest: Codable, Sendable {
+    public let reason: String
+
+    public init(reason: String = "User initiated action") {
+        self.reason = reason
+    }
+}
+
+public struct TaskActionResponse: Codable, Sendable {
+    public let taskId: String
+    public let status: TaskStatus
+    public let success: Bool
+    public let message: String
+    public let timestamp: String
+
+    enum CodingKeys: String, CodingKey {
+        case taskId = "task_id"
+        case status
+        case success
+        case message
+        case timestamp
+    }
+}
+
+public struct StepApprovalRemoteRequest: Codable, Sendable {
+    public let stepId: Int
+    public let approved: Bool
+    public let reason: String?
+
+    public init(stepId: Int, approved: Bool, reason: String? = nil) {
+        self.stepId = stepId
+        self.approved = approved
+        self.reason = reason
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case stepId = "step_id"
+        case approved
+        case reason
+    }
+}
+
+public struct StepApprovalRemoteResponse: Codable, Sendable {
+    public let taskId: String
+    public let stepId: Int
+    public let approved: Bool
+    public let status: TaskStatus
+    public let message: String
+    public let timestamp: String
+
+    enum CodingKeys: String, CodingKey {
+        case taskId = "task_id"
+        case stepId = "step_id"
+        case approved
+        case status
+        case message
+        case timestamp
+    }
+}
+
+public struct TaskMetricsResponse: Codable, Sendable {
+    public let tasksStarted: Int
+    public let tasksCompleted: Int
+    public let tasksFailed: Int
+    public let tasksCancelled: Int
+    public let stepsExecuted: Int
+    public let stepsRetried: Int
+    public let stepsReplanned: Int
+    public let approvalRequests: Int
+    public let approvalDenials: Int
+    public let verificationFailures: Int
+    public let averageTaskDuration: Double
+
+    enum CodingKeys: String, CodingKey {
+        case tasksStarted = "tasks_started"
+        case tasksCompleted = "tasks_completed"
+        case tasksFailed = "tasks_failed"
+        case tasksCancelled = "tasks_cancelled"
+        case stepsExecuted = "steps_executed"
+        case stepsRetried = "steps_retried"
+        case stepsReplanned = "steps_replanned"
+        case approvalRequests = "approval_requests"
+        case approvalDenials = "approval_denials"
+        case verificationFailures = "verification_failures"
+        case averageTaskDuration = "average_task_duration"
+    }
+}
+
+// =============================================================================
 // Phase 05: Remote Computer Control Models
 // =============================================================================
+
 
 public struct WindowBounds: Codable, Sendable {
     public let x: Int
@@ -690,5 +894,56 @@ public struct ClipboardContent: Codable, Sendable {
         case textPreview = "text_preview"
     }
 }
+
+// MARK: - Browser Subsystem Models (Phase 08)
+
+public struct BrowserStatusResponse: Codable, Sendable {
+    public let enabled: Bool
+    public let running: Bool
+    public let headless: Bool
+    public let protocolVersion: String
+
+    enum CodingKeys: String, CodingKey {
+        case enabled
+        case running
+        case headless
+        case protocolVersion = "protocol_version"
+    }
+}
+
+public struct BrowserTabItem: Codable, Sendable, Identifiable {
+    public var id: String { tabId }
+    public let tabId: String
+    public let title: String
+    public let url: String?
+    public let isActive: Bool
+    public let loading: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case tabId = "tab_id"
+        case title
+        case url
+        case isActive = "is_active"
+        case loading
+    }
+}
+
+public struct BrowserNewTabRequest: Codable, Sendable {
+    public let url: String?
+    public init(url: String? = nil) {
+        self.url = url
+    }
+}
+
+public struct BrowserTabActionResponse: Codable, Sendable {
+    public let success: Bool
+    public let tabId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case success
+        case tabId = "tab_id"
+    }
+}
+
 
 

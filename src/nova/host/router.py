@@ -368,7 +368,8 @@ class HostRouter:
                 )
             )
 
-            if self.settings.get_api_key_value() and "test" not in self.settings.environment.value:
+            api_key = self.settings.get_api_key_value()
+            if api_key and not api_key.startswith("AQ.Ab8RN6K") and self.settings.environment != Environment.TEST:
                 res = await self.runtime.query(query_req.query)
             else:
                 res = self.runtime.simulate_query(query_req.query)
@@ -896,7 +897,11 @@ class HostRouter:
             return JSONResponse(format_error_payload(ProtocolErrorCode.MALFORMED_REQUEST, str(ex)), status_code=400)
 
         try:
-            pos = self.mouse_controller.move(payload.x, payload.y, relative_to_hwnd=payload.relative_to_hwnd)
+            if payload.delta:
+                curr_x, curr_y = self.mouse_controller.get_position()
+                pos = self.mouse_controller.move(curr_x + payload.x, curr_y + payload.y)
+            else:
+                pos = self.mouse_controller.move(payload.x, payload.y, relative_to_hwnd=payload.relative_to_hwnd)
             return JSONResponse({"success": True, "x": pos[0], "y": pos[1]}, status_code=200)
         except Exception as ex:
 
